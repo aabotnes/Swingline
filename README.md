@@ -39,14 +39,14 @@ There are two groups: one for your bars and one for your target's. Out of the bo
 - **Moving a group**: unlock bars, then drag the group by its tab, or Shift-drag any member bar.
 
 ## Profiles
-Profiles are shared by all your characters, and each character remembers which one it uses. New characters start on **Classic**. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.
+Profiles are shared by all your characters, and each character remembers which one it uses. New characters start on **WoW Forever**. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.
 
 Built-in profiles (all anchor bars to the player and target groups):
 | Profile | Look |
 |---|---|
-| Classic *(default)* | Blizzard-style bars with borders, labels and timers, below your unit frames |
+| WoW Forever *(default)* | The game's own swing bar art (213x30), below your unit frames |
+| Classic | Blizzard-style bars with borders, labels and timers, below your unit frames |
 | Minimalistic | Hair-thin 2px lines across the top of your unit frames |
-| WoW Forever | The game's own swing bar art, below your unit frames |
 | Center Stack | Both groups under your character, with target bars above yours |
 | Neon | Glowing slim bars below your unit frames |
 

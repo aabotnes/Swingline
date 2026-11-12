@@ -52,14 +52,17 @@ ns.BAR_INFO = {
   targetRanged = { unit = "target", kind = "ranged", name = "Ranged",    phase = 1.8 },
 }
 
--- Defaults = the Classic look: each unit's bars sit in its group, and the
--- group hangs below that unit's frame.
-local function barDefaults(unit, color, groupY, height)
+-- Defaults = the WoW Forever look (the game's own swing bar art): each
+-- unit's bars sit in its group, and the group sits right under that unit's
+-- frame. On a client without that art the bars fall back to Classic.
+local DEFAULT_Y = { main = -70, off = -100, ranged = -130 }
+
+local function barDefaults(unit, kind, color)
   return {
     enabled   = true,
-    style     = "classic",
-    width     = 200,
-    height    = height,
+    style     = "forever",
+    width     = 213,
+    height    = 30,
     color     = { r = color[1], g = color[2], b = color[3] },
     bgAlpha   = 0.5,
     fill      = "fill",     -- "fill" | "drain"
@@ -69,16 +72,16 @@ local function barDefaults(unit, color, groupY, height)
     dock      = unit .. "Group", -- "none" | "playerGroup" | "targetGroup" | "player" | "target" | "custom"
     dockFrame = "",         -- frame name when dock == "custom"
     dockSide  = "BOTTOM",   -- BOTTOM | TOP | LEFT | RIGHT | CENTER
-    x = 0, y = groupY,      -- offset from whatever it's docked to
+    x = 0, y = DEFAULT_Y[kind], -- offset from whatever it's docked to
     freeX = unit == "player" and -170 or 170, -- offset from screen center when not docked
-    freeY = -150 + groupY,
+    freeY = -80 + DEFAULT_Y[kind],
   }
 end
 
 local function groupDefaults(unit)
   return {
     dock = unit, dockFrame = "", dockSide = "BOTTOM",
-    x = 0, y = -8,
+    x = 0, y = 0,
     freeX = unit == "player" and -170 or 170, freeY = -150,
   }
 end
@@ -97,12 +100,12 @@ ns.DEFAULTS = {
     target = groupDefaults("target"),
   },
   bars = {
-    playerMain   = barDefaults("player", { 0.30, 0.62, 1.00 },   0, 14),
-    playerOff    = barDefaults("player", { 0.64, 0.46, 1.00 }, -22, 12),
-    playerRanged = barDefaults("player", { 0.32, 0.86, 0.56 }, -42, 12),
-    targetMain   = barDefaults("target", { 1.00, 0.36, 0.34 },   0, 14),
-    targetOff    = barDefaults("target", { 1.00, 0.60, 0.30 }, -22, 12),
-    targetRanged = barDefaults("target", { 1.00, 0.82, 0.30 }, -42, 12),
+    playerMain   = barDefaults("player", "main",   { 0.30, 0.62, 1.00 }),
+    playerOff    = barDefaults("player", "off",    { 0.64, 0.46, 1.00 }),
+    playerRanged = barDefaults("player", "ranged", { 0.32, 0.86, 0.56 }),
+    targetMain   = barDefaults("target", "main",   { 1.00, 0.36, 0.34 }),
+    targetOff    = barDefaults("target", "off",    { 1.00, 0.60, 0.30 }),
+    targetRanged = barDefaults("target", "ranged", { 1.00, 0.82, 0.30 }),
   },
 }
 
@@ -137,11 +140,22 @@ local function eachGroup(p, fn)
   for gid, g in pairs(p.groups) do fn(g, gid) end
 end
 
-ns.DEFAULT_PROFILE = "Classic"
+ns.DEFAULT_PROFILE = "WoW Forever"
 
 ns.PRESETS = {
+  { name = "WoW Forever", desc = "The game's own swing bar art, below your unit frames.",
+    apply = function() end },  -- this is the default look
+
   { name = "Classic", desc = "Blizzard-style bars with borders, labels and timers, below your unit frames.",
-    apply = function() end },
+    apply = function(p)
+    eachGroup(p, function(g) g.y = -8 end)
+    local Y = { main = 0, off = -22, ranged = -42 }
+    local H = { main = 14, off = 12, ranged = 12 }
+    eachBar(p, function(c, info)
+      c.style, c.width, c.height, c.bgAlpha = "classic", 200, H[info.kind], 0.5
+      c.dockSide, c.x, c.y = "BOTTOM", 0, Y[info.kind]
+    end)
+  end },
 
   { name = "Minimalistic", desc = "Hair-thin lines across the top of your unit frames.", apply = function(p)
     eachGroup(p, function(g) g.dockSide, g.x, g.y = "TOP", 0, 0 end)
@@ -150,22 +164,6 @@ ns.PRESETS = {
       c.style, c.width, c.height, c.bgAlpha = "modern", 180, 2, 0.6
       c.showText, c.showLabel, c.showSpark, c.fill = false, false, true, "fill"
       c.dockSide, c.x, c.y = "TOP", 0, Y[info.kind]
-    end)
-  end },
-
-  { name = "WoW Forever", desc = "The game's own swing bar art, below your unit frames.", apply = function(p)
-    local w, h = 200, 22
-    if ns.Bars and ns.Bars.NativeSize then
-      local nw, nh = ns.Bars:NativeSize()
-      if nw then w, h = nw, nh end
-    end
-    eachGroup(p, function(g) g.y = -2 end)
-    local step = math.max(h - 6, 6)   -- Blizzard overlaps its bars by 6px
-    local Y = { main = 0, off = -step, ranged = -2 * step }
-    eachBar(p, function(c, info)
-      c.style, c.width, c.height = "forever", w, h
-      c.showText, c.showLabel, c.showSpark = true, true, true
-      c.dockSide, c.x, c.y = "BOTTOM", 0, Y[info.kind]
     end)
   end },
 
@@ -183,6 +181,7 @@ ns.PRESETS = {
   end },
 
   { name = "Neon", desc = "Glowing slim bars below your unit frames.", apply = function(p)
+    eachGroup(p, function(g) g.y = -8 end)
     local Y = { main = 0, off = -14, ranged = -28 }
     eachBar(p, function(c, info)
       c.style, c.width, c.height, c.bgAlpha = "neon", 190, 8, 0.7

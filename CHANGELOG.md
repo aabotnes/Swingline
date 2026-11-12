@@ -1,5 +1,14 @@
 # Swingline
 
+## v1.3.1
+
+- **WoW Forever is now the default look and profile** for new characters and "New (defaults)". Clients without the game's swing bar art fall back to Classic.
+- **WoW Forever profile retuned** to match the game's own bars, the same for player and target:
+  - each group sits directly below its unit frame
+  - bars are 213x30, attached below the group at Y -70, -100 and -130
+- Classic, Minimalistic, Center Stack and Neon keep their own sizes and spacing.
+- If you already have a WoW Forever profile, choose *Reset current profile* to pick up the new layout.
+
 ## v1.3.0
 
 - **New look: WoW Forever.** Uses the game's own swing timer art (`ui-swingtimerbar-*`) with the same insets, pip and font as the built-in bars. Like the game's bars, it dims and turns red when you're out of range. A button sets a bar to the game's own size.
