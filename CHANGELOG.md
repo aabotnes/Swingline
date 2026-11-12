@@ -1,6 +1,6 @@
 # Swingline
 
-## v1.4.0
+## v1.5.0
 
 - **New: nameplate swing lines.** Thin swing timers on your current target's nameplate. It's off by default; turn it on under *Nameplate* in the sidebar.
   - **Lines:** any of the six timers (yours and your target's), each on or off.

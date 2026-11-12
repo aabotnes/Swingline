@@ -94,7 +94,7 @@ For each release:
 1. Update `CHANGELOG.md`.
 2. Push a tag:
    ```bash
-   git tag v1.3.0 && git push origin v1.3.0
+   git tag v1.5.0 && git push origin v1.5.0
    ```
 
 ## License
