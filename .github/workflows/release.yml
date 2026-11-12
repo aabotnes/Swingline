@@ -1,0 +1,31 @@
+# Packages the addon and uploads it to CurseForge + GitHub Releases
+# whenever a version tag (e.g. v1.0.0) is pushed.
+#
+# One-time setup:
+#   1. Create the project on CurseForge and add its ID to Swingline.toc:
+#        ## X-Curse-Project-ID: 123456
+#   2. Create a CurseForge API token (https://authors.curseforge.com/account/api-tokens)
+#      and save it as the repository secret CF_API_KEY.
+name: Package and release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2

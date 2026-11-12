@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: Swingline
+## Notes: Modern, customizable weapon swing timers (main hand, off hand, ranged) for you and your target.
+## Version: @project-version@
+## Author: aabotnes
+## Category: Combat
+## SavedVariables: SwinglineDB
+## IconTexture: Interface\AddOns\Swingline\Media\Icon
+## AddonCompartmentFunc: Swingline_OnAddonCompartmentClick
+## X-License: MIT
+## X-Website: https://github.com/aabotnes/Swingline
+
+Core.lua
+Bars.lua
+Options.lua
