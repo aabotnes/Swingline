@@ -1,5 +1,10 @@
 # Swingline
 
+## v1.3.2
+
+- **New addon icon** in the style of WoW Forever's own swing timer: three beveled bars with stone-bronze fills and bright pips, on a starry night sky with constellations, a blue nebula and a gold rim.
+- The CurseForge logo (`Media/Logo.png`) is updated to match.
+
 ## v1.3.1
 
 - **WoW Forever is now the default look and profile** for new characters and "New (defaults)". Clients without the game's swing bar art fall back to Classic.
