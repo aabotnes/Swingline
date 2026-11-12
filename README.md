@@ -53,6 +53,11 @@ Optional thin swing timers on your current target's nameplate. Turn them on unde
   - width (0 = match the plate), line height and gap
   - above or below the health bar, with X/Y offsets
   - separate on/off settings for **solo**, **in a party** and **in a raid**
+- **All nearby enemies (optional):** every enemy nameplate gets that enemy's own melee and ranged lines.
+  - Ranged comes from each enemy's Auto Shot or Shoot.
+  - Melee: the game doesn't say which enemy landed a hit. With one attacker, the hit is credited to it. With several, it goes to the enemy whose next swing is due right then, so a pack can be followed once each mob has swung once. A hit that matches nobody is ignored.
+  - A line disappears shortly after its swing is due if no new swing is seen, so it never freezes.
+  - Switching target carries that enemy's timers over to your target bars.
 
 ## Profiles
 Profiles are shared by all your characters, and each character remembers which one it uses. New characters start on **WoW Forever**. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.

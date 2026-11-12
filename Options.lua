@@ -591,7 +591,12 @@ function O:BuildPlates(p)
   local L = p:Column(COL1_X, COL_Y, COL_W)
   L:Add("Header", { label = "Lines" })
   L:Add("Toggle", { label = "Show on target's nameplate",
-    get = function() return cfg().enabled end, set = function(v) cfg().enabled = v end }, 8)
+    get = function() return cfg().enabled end, set = function(v) cfg().enabled = v end }, 2)
+  L:Add("Toggle", { label = "Also on all nearby enemies", disabled = off,
+    tooltip = "Every enemy nameplate gets its own melee and ranged lines. Ranged comes from each " ..
+      "enemy's own shots. The game doesn't say who landed a melee hit, so each hit is credited to " ..
+      "the enemy whose swing is due; a hit that matches nobody is skipped.",
+    get = function() return cfg().allUnits end, set = function(v) cfg().allUnits = v end }, 8)
   for _, key in ipairs(ns.PLATE_LINES) do
     L:Add("Toggle", { label = PLATE_LINE_LABEL[key], disabled = off,
       get = function() return cfg().lines[key] end, set = function(v) cfg().lines[key] = v end }, 0)

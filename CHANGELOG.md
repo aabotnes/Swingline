@@ -9,6 +9,7 @@
   - **Text:** optional time remaining, with its own font size, plus background opacity.
   - **Size and position:** width (or match the plate), line height, gap, above or below the health bar, and X/Y offsets.
   - **Visibility:** separate on/off settings for solo, in a party and in a raid.
+  - **All nearby enemies (optional):** every enemy nameplate gets its own melee and ranged lines. Ranged comes from each enemy's Auto Shot or Shoot. Melee hits are credited to the enemy whose next swing is due, so a pack can be followed once each mob has swung once. A hit that matches nobody is ignored rather than guessed, and lines disappear shortly after a swing is due instead of freezing. Switching target carries that enemy's timers over to the target bars.
 - **New: minimap button.** Left-click opens the settings, right-click locks or unlocks the bars, and you can drag it around the minimap. Show or hide it on the General page or with `/swl minimap`.
 - Swingline now carries the **[Soeta's]** tag in the AddOns list, the settings window and chat, like the other Soeta addons.
 - The settings window is a little taller to fit the new pages.

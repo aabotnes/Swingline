@@ -110,6 +110,7 @@ ns.DEFAULTS = {
     targetColor = { r = 1.00, g = 0.36, b = 0.34 },
     showText = false, fontSize = 9,
     showSolo = true, showParty = true, showRaid = true,
+    allUnits = false, -- also on every nearby enemy's nameplate
     side = "BOTTOM", width = 0, height = 3, gap = 1, x = 0, y = -2, bgAlpha = 0.6,
   },
   -- Anchor points for the player's and the target's bars
@@ -556,8 +557,8 @@ function SL:TargetSwingLanded()
   if not mh then
     -- No readable speed: learn it from the gap between hits.
     if tm.start then
-      local gap = now - tm.start
-      if gap > 0.8 and gap < 5 then self.targetMeasured = gap end
+      local gap, known = now - tm.start, self.targetMeasured
+      if gap > 0.8 and gap < 5 and not (known and gap > known * 1.5) then self.targetMeasured = gap end
     end
     mh = self.targetMeasured or 2.0
   end
@@ -572,13 +573,135 @@ function SL:TargetSwingLanded()
   t.start, t.dur = now, (key == "targetOff") and oh or mh
 end
 
+---------------------------------------------------------------------------
+-- Every nearby enemy (nameplate swing lines on all enemies)
+-- Ranged: each enemy's own Auto Shot / Shoot casts.
+-- Melee: a hit on you is only credited when exactly one nearby enemy is
+-- targeting you; with several, nobody can tell whose swing it was.
+---------------------------------------------------------------------------
+SL.unitTimers = {}  -- [guid or unit] = { main = {start, dur}, ranged = {start, dur}, gap, rgap }
+
+local function unitId(unit)
+  local g = readable((try(UnitGUID, unit)))
+  if type(g) == "string" then return g end
+  return unit
+end
+
+function SL:UnitTimer(unit)
+  local id = unitId(unit)
+  local t = self.unitTimers[id]
+  if not t then t = { main = {}, ranged = {} }; self.unitTimers[id] = t end
+  return t
+end
+
+function SL:PeekUnitTimer(unit) return self.unitTimers[unitId(unit)] end
+
+-- Unit tokens of every nameplate currently shown.
+function ns.nameplateUnits()
+  local list, api = {}, C_NamePlate
+  if not (api and api.GetNamePlates) then return list end
+  local ok, plates = pcall(api.GetNamePlates)
+  if not ok or type(plates) ~= "table" then return list end
+  for _, plate in ipairs(plates) do
+    local u = plate.namePlateUnitToken or (type(plate.UnitFrame) == "table" and plate.UnitFrame.unit)
+    u = readable(u)
+    if type(u) == "string" then list[#list + 1] = u end
+  end
+  return list
+end
+
+function SL:IsHostile(unit)
+  return readable((try(UnitCanAttack, "player", unit))) == true
+    and not readable((try(UnitIsDead, unit)))
+end
+
+function SL:EnemiesAttackingMe()
+  local out = {}
+  for _, u in ipairs(ns.nameplateUnits()) do
+    if self:IsHostile(u) and readable((try(UnitIsUnit, u .. "target", "player"))) == true then
+      out[#out + 1] = u
+    end
+  end
+  return out
+end
+
+function SL:UnitMeleeLanded(unit, now)
+  local ut = self:UnitTimer(unit)
+  local m = ut.main
+  if m.start and now - m.start < 0.2 then return end -- same hit seen twice
+  local speed = validSpeed((try(_G.UnitAttackSpeed, unit)))
+  if not speed then
+    if m.start then
+      local gap = now - m.start
+      -- ignore gaps that span a swing we didn't see (about twice the speed)
+      -- (only once a real gap has been measured; the 2.0s first guess can be off)
+      if gap > 0.8 and gap < 5 and not (ut.gap and gap > ut.gap * 1.5) then ut.gap = gap end
+    end
+    speed = ut.gap or 2.0
+  end
+  m.start, m.dur = now, speed
+end
+
+function SL:UnitRangedFired(unit, now)
+  local ut = self:UnitTimer(unit)
+  local r = ut.ranged
+  if r.start and now - r.start < 0.2 then return end -- "target" and its nameplate token both fire
+  local dur = ut.rgap or 2.0
+  if r.start then
+    local gap = now - r.start
+    -- a long pause (shots it didn't fire, or we didn't see) isn't its speed
+    if gap > 0.8 and gap < 5 and not (ut.rgap and gap > ut.rgap * 1.5) then dur = gap; ut.rgap = gap end
+  end
+  r.start, r.dur = now, dur
+end
+
+function SL:PLAYER_REGEN_ENABLED() wipe(self.unitTimers) end -- fresh start each fight
+
+-- Several enemies on you: credit the hit to the one whose next swing is due
+-- right now (or, failing that, to the only one we know nothing about yet).
+local DUE_WINDOW, UNKNOWN_MARGIN = 0.35, 0.6
+
+function SL:PickAttacker(list, now)
+  if #list == 1 then return list[1] end
+  local best, bestErr, unknown = nil, math.huge, {}
+  for _, u in ipairs(list) do
+    local ut = self:PeekUnitTimer(u)
+    local m = ut and ut.main
+    if m and m.dur then
+      local due = m.start + m.dur
+      local err = math.abs(now - due)
+      err = math.min(err, math.abs(now - (due + m.dur))) -- one swing went unseen
+      if err < bestErr then best, bestErr = u, err end
+    else
+      unknown[#unknown + 1] = u
+    end
+  end
+  if best and bestErr <= DUE_WINDOW then return best end
+  if #unknown == 1 and (not best or bestErr > UNKNOWN_MARGIN) then return unknown[1] end
+  return nil -- can't tell whose hit it was
+end
+
 function SL:UNIT_COMBAT(unit, action, _, _, school)
   if readable(unit) ~= "player" then return end
   action, school = readable(action), readable(school)
   if not action or not MELEE_ACTIONS[action] then return end
   if school and school ~= 1 then return end -- physical only
-  if not self:TargetIsAttackingMe() then return end
-  self:TargetSwingLanded()
+  local now = GetTime()
+
+  -- With nearby enemies tracked, work out who hit us once and use it for the
+  -- target bars too, so hits from other mobs don't leak into them.
+  if ns.Plates and ns.Plates:WantsAllUnits() then
+    local attackers = self:EnemiesAttackingMe()
+    if #attackers > 0 then
+      local who = self:PickAttacker(attackers, now)
+      if who then
+        self:UnitMeleeLanded(who, now)
+        if readable((try(UnitIsUnit, who, "target"))) == true then self:TargetSwingLanded() end
+      end
+      return
+    end
+  end
+  if self:TargetIsAttackingMe() then self:TargetSwingLanded() end
 end
 
 -- Auto Shot / Shoot / Throw spell IDs (fallback + target ranged)
@@ -589,20 +712,30 @@ local AUTO_RANGED = {
 
 function SL:UNIT_SPELLCAST_SUCCEEDED(unit, _, spellID)
   unit, spellID = readable(unit), readable(spellID)
-  if not spellID or not AUTO_RANGED[spellID] then return end
+  if not spellID or not AUTO_RANGED[spellID] or type(unit) ~= "string" then return end
   local now = GetTime()
   if unit == "player" then
     if self.nativeRanged then return end -- native event already handles it
     local t = self.timers.playerRanged
     t.start, t.dur = now, playerSpeed("ranged") or 2.0
-  elseif unit == "target" then
+    return
+  end
+  if unit == "target" then
     local t = self.timers.targetRanged
-    local dur = self.targetRangedMeasured or 2.0
-    if t.start then
-      local gap = now - t.start
-      if gap > 0.8 and gap < 5 then dur = gap; self.targetRangedMeasured = gap end
+    if not (t.start and now - t.start < 0.2) then
+      local dur = self.targetRangedMeasured or 2.0
+      if t.start then
+        local gap, known = now - t.start, self.targetRangedMeasured
+        if gap > 0.8 and gap < 5 and not (known and gap > known * 1.5) then
+          dur = gap; self.targetRangedMeasured = gap
+        end
+      end
+      t.start, t.dur = now, dur
     end
-    t.start, t.dur = now, dur
+  end
+  if (unit == "target" or unit:find("^nameplate")) and ns.Plates and ns.Plates:WantsAllUnits()
+     and self:IsHostile(unit) then
+    self:UnitRangedFired(unit, now)
   end
 end
 
@@ -610,6 +743,16 @@ function SL:PLAYER_TARGET_CHANGED()
   resetTimer("targetMain"); resetTimer("targetOff"); resetTimer("targetRanged")
   self.targetMeasured, self.targetRangedMeasured = nil, nil
   wipe(self.outOfRange)
+
+  -- Already tracking this enemy on its nameplate? Carry its timers over so
+  -- the target bars don't start from nothing.
+  local ut = ns.Plates:WantsAllUnits() and readable((try(UnitExists, "target"))) and self:PeekUnitTimer("target")
+  if ut then
+    local tm, tr = self.timers.targetMain, self.timers.targetRanged
+    if ut.main.dur then tm.start, tm.dur = ut.main.start, ut.main.dur end
+    if ut.ranged.dur then tr.start, tr.dur = ut.ranged.start, ut.ranged.dur end
+    self.targetMeasured, self.targetRangedMeasured = ut.gap, ut.rgap
+  end
   ns.Plates:Attach()
 end
 
@@ -711,7 +854,8 @@ function SL:PLAYER_LOGIN()
   reg("PLAYER_SWING_RANGE_UPDATE")
   regUnit("UNIT_ATTACK_SPEED", "player")
   regUnit("UNIT_COMBAT", "player")
-  regUnit("UNIT_SPELLCAST_SUCCEEDED", "player", "target")
+  reg("UNIT_SPELLCAST_SUCCEEDED") -- all units: nearby enemies' Auto Shot / Shoot too
+  reg("PLAYER_REGEN_ENABLED")
   reg("PLAYER_TARGET_CHANGED")
   reg("PLAYER_ENTER_COMBAT")
   reg("PLAYER_LEAVE_COMBAT")
