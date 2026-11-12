@@ -2,7 +2,7 @@
 
 # Swingline
 
-Modern, fully customizable weapon swing timers for **WoW Forever**. Each bar has its own settings. Bars can float anywhere on screen or dock to your unit frames.
+Modern, fully customizable weapon swing timers for **WoW Forever**. Each bar has its own settings. Bars can float anywhere on screen, or dock to your unit frames either on their own or in groups.
 
 ## Install
 - **CurseForge app**: search for *Swingline*.
@@ -22,34 +22,40 @@ Modern, fully customizable weapon swing timers for **WoW Forever**. Each bar has
 | Ranged (including Auto Shot and wands) | Ranged (Auto Shot or Shoot) |
 
 Settings for each bar:
-- **Look**: Modern, Minimal Line, Classic, Neon Glow or Centered
+- **Look**: WoW Forever (the game's own swing bar art), Classic, Modern, Minimal Line, Neon Glow or Centered
 - **Size and colour**: width, height, colour and background opacity
 - **Text**: time remaining, weapon label and spark, each on or off
 - **Fill direction**: fill up or drain
 
 Settings for each bar's position:
-- **Anchor to**: free, Player unit frame, Target unit frame, or a custom frame name. Unit frames are detected in this order: ElvUI, Shadowed Unit Frames, PitBull4, oUF, then Blizzard's own frames.
-- **Placement**: which side of the frame the bar attaches to, plus X/Y offsets. Dragging a docked bar updates its offsets from the frame it's docked to.
+- **Anchor to**: Player group, Target group, free, Player unit frame, Target unit frame, or a custom frame name. Unit frames are detected in this order: ElvUI, Shadowed Unit Frames, PitBull4, oUF, then Blizzard's own frames.
+- **Placement**: which side the bar attaches on, plus X/Y offsets. Dragging a bar updates its offsets from whatever it's anchored to.
 
-## Group
-Set a bar's **Anchor to** to *Swingline group* to make it a member of the group. Member bars keep their own offsets from the group, and the group has its own anchor and X/Y offset. Moving the group moves every member with it.
-- **Group settings page**: choose the group's anchor and offset, and which bars are members.
+## Groups
+There are two groups: one for your bars and one for your target's. Out of the box, each unit's bars sit in its group and each group is anchored to its unit frame, so moving a group moves those three bars together.
+- **Offsets**: each member bar keeps its own offsets from its group. Each group has its own anchor (free, unit frame or custom frame), attachment point and X/Y offset.
+- **Group pages**: the *Group* entry under PLAYER or TARGET in the sidebar sets that group's anchor and which bars are members. Any bar can also join either group from its own **Anchor to** setting.
 - **Adding or removing a bar**: the bar stays where it is on screen; only its offsets change.
-- **Moving the group**: unlock bars, then drag the group by its tab, or Shift-drag any member bar.
+- **Moving a group**: unlock bars, then drag the group by its tab, or Shift-drag any member bar.
 
 ## Profiles
-Profiles are shared by all your characters, and each character remembers which one it uses. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.
+Profiles are shared by all your characters, and each character remembers which one it uses. New characters start on **Classic**. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.
 
-Built-in profiles:
+Built-in profiles (all anchor bars to the player and target groups):
 | Profile | Look |
 |---|---|
-| Default | Labelled bars below your player and target frames |
-| Frame Lines | Hair-thin 2px lines across the top of your unit frames |
-| Center Stack | One group under your character, with target bars above yours |
+| Classic *(default)* | Blizzard-style bars with borders, labels and timers, below your unit frames |
+| Minimalistic | Hair-thin 2px lines across the top of your unit frames |
+| WoW Forever | The game's own swing bar art, below your unit frames |
+| Center Stack | Both groups under your character, with target bars above yours |
 | Neon | Glowing slim bars below your unit frames |
-| Classic | Blizzard-style bars with borders, labels and timers |
 
 Built-in profiles can be edited freely. **Reset** brings back the original look, and **Restore built-in profiles** re-adds any you deleted.
+
+## WoW Forever look and the game's own bars
+The *WoW Forever* look uses the same art, insets, pip and font as the game's built-in swing timer. Like the game's bars, it dims and turns its labels red when you're out of range, and bar colour doesn't apply to it. **Use the game's bar size** on a bar's page sets its width and height to match the art.
+
+If you'd rather see only Swingline, turn on **Hide the game's own swing bars** on the General page. It turns off the game's `showSwingTimer` setting for every character.
 
 ## How timing works
 - **Your swings** come from Forever's native `PLAYER_SWING` event. Haste changes during a swing rescale the time left. Bars dim when your target is out of range, using `C_SwingTimer` range checks.
@@ -67,7 +73,7 @@ For each release:
 1. Update `CHANGELOG.md`.
 2. Push a tag:
    ```bash
-   git tag v1.0.1 && git push origin v1.0.1
+   git tag v1.3.0 && git push origin v1.3.0
    ```
 
 ## License

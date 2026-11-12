@@ -3,7 +3,7 @@
 local ADDON, ns = ...
 local SL = ns.SL
 
-local Bars = { frames = {} }
+local Bars = { frames = {}, groups = {} }
 ns.Bars = Bars
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
@@ -15,6 +15,7 @@ local floor, min, max, format = math.floor, math.min, math.max, string.format
 -- Looks
 ---------------------------------------------------------------------------
 ns.STYLES = {
+  { value = "forever",  text = "WoW Forever (Blizzard)" },
   { value = "modern",   text = "Modern" },
   { value = "minimal",  text = "Minimal Line" },
   { value = "classic",  text = "Classic" },
@@ -39,7 +40,76 @@ local STYLE = {
   centered = {
     tex = WHITE, gradient = true, edge = { 0, 0, 0, 0.9 }, bg = { 0.04, 0.04, 0.05 }, centered = true,
   },
+  -- Blizzard's own WoW Forever swing bar art (Blizzard_SwingTimer)
+  forever = { native = true, bg = { 0, 0, 0 } },
 }
+
+---------------------------------------------------------------------------
+-- Native (Blizzard_SwingTimer) look: same atlases and insets as the
+-- built-in SwingTimerMainHandFrame / OffHand / Ranged bars.
+---------------------------------------------------------------------------
+local NATIVE = {
+  background = "ui-swingtimerbar-background",
+  border     = "ui-swingtimerbar-frame",
+  pip        = "ui-swingtimerbar-pip",
+  shadow     = "ui-swingtimerbar-textshadow-left",
+  fill = {
+    main   = "ui-swingtimerbar-filling-mainhand",
+    off    = "ui-swingtimerbar-filling-offhand",
+    ranged = "ui-swingtimerbar-filling-ranged",
+  },
+}
+
+local function hasAtlas(name)
+  return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
+end
+
+function Bars:NativeAvailable() return hasAtlas(NATIVE.border) end
+
+-- Size of Blizzard's bar art, if the client has it.
+function Bars:NativeSize()
+  local info = hasAtlas(NATIVE.border) and C_Texture.GetAtlasInfo(NATIVE.border)
+  if info and (info.width or 0) > 0 and (info.height or 0) > 0 then
+    return floor(info.width + 0.5), floor(info.height + 0.5)
+  end
+end
+
+local function ensureNative(f)
+  if f.nat then return f.nat end
+  local n = CreateFrame("Frame", nil, f)
+  n:SetAllPoints()
+  n.bg = n:CreateTexture(nil, "BACKGROUND", nil, 0)
+  n.bg:SetAllPoints()
+  n.border = n:CreateTexture(nil, "BACKGROUND", nil, 1)
+  n.border:SetAllPoints()
+  n.sb = CreateFrame("StatusBar", nil, n)
+  n.sb:SetPoint("TOPLEFT", 5, -4)
+  n.sb:SetPoint("BOTTOMRIGHT", -5, 4)
+  n.sb:SetMinMaxValues(0, 1)
+  n.sb:SetValue(0)
+  n.shadow = n.sb:CreateTexture(nil, "OVERLAY", nil, 1)
+  n.shadow:SetPoint("TOPLEFT"); n.shadow:SetPoint("BOTTOMLEFT")
+  n.pip = n.sb:CreateTexture(nil, "OVERLAY", nil, 2)
+  f.nat = n
+  return n
+end
+
+function Bars:ApplyNative(f, cfg)
+  local n = ensureNative(f)
+  n:Show()
+  n:SetFrameLevel(f:GetFrameLevel() + 1)
+  n.bg:SetAtlas(NATIVE.background)
+  n.border:SetAtlas(NATIVE.border)
+  local kind = ns.BAR_INFO[f.key].kind
+  n.sb:SetStatusBarTexture(NATIVE.fill[kind])
+  n.shadow:SetAtlas(NATIVE.shadow)
+  n.shadow:SetWidth(min(171, max(1, cfg.width - 10)))
+  n.shadow:SetShown(cfg.showLabel)
+  n.pip:SetAtlas(NATIVE.pip, true)
+  n.pip:ClearAllPoints()
+  n.pip:SetPoint("RIGHT", n.sb:GetStatusBarTexture(), "RIGHT")
+  n:SetAlpha(1)
+end
 
 ---------------------------------------------------------------------------
 -- Docking
@@ -54,9 +124,10 @@ ns.GROUP_DOCKS = {
 
 -- Anchors for a bar: everything above plus the group
 ns.DOCKS = {
-  { value = "none",   text = "Free (not docked)" },
-  { value = "group",  text = "Swingline group" },
-  { value = "player", text = "Player unit frame" },
+  { value = "none",        text = "Free (not docked)" },
+  { value = "playerGroup", text = "Player group" },
+  { value = "targetGroup", text = "Target group" },
+  { value = "player",      text = "Player unit frame" },
   { value = "target", text = "Target unit frame" },
   { value = "custom", text = "Custom frame..." },
 }
@@ -86,9 +157,14 @@ local DOCK_CANDIDATES = {
 
 local function isFrame(f) return type(f) == "table" and type(f.GetObjectType) == "function" end
 
+-- Bar dock value -> group id
+ns.GROUP_OF_DOCK = { playerGroup = "player", targetGroup = "target" }
+ns.DOCK_OF_GROUP = { player = "playerGroup", target = "targetGroup" }
+
 function Bars:ResolveDock(cfg)
-  if cfg.dock == "group" then
-    return cfg ~= SL.db.group and self.group or nil
+  local gid = ns.GROUP_OF_DOCK[cfg.dock]
+  if gid then
+    return self.groups and self.groups[gid] or nil
   end
   if cfg.dock == "custom" then
     local f = cfg.dockFrame ~= "" and _G[cfg.dockFrame]
@@ -231,24 +307,26 @@ function Bars:Create(key)
 
   f:SetScript("OnDragStart", function(self)
     if SL.db.locked then return end
-    if IsShiftKeyDown() and self.cfg.dock == "group" then
-      Bars.movingGroup = self       -- shift-drag a member: move the whole group
-      Bars.group:StartMoving()
+    local gid = ns.GROUP_OF_DOCK[self.cfg.dock]
+    if IsShiftKeyDown() and gid then
+      self.movingGroup = Bars.groups[gid]   -- shift-drag a member: move its whole group
+      self.movingGroup:StartMoving()
     else
       self:StartMoving()
     end
   end)
   f:SetScript("OnDragStop", function(self)
-    if Bars.movingGroup == self then
-      Bars.movingGroup = nil
-      Bars:FinishGroupMove()
+    if self.movingGroup then
+      local g = self.movingGroup
+      self.movingGroup = nil
+      Bars:FinishGroupMove(g)
       return
     end
     self:StopMovingOrSizing()
     self:SetUserPlaced(false)
     Bars:SavePosition(self)
     Bars:Layout(self)
-    Bars:UpdateGroupHandle()
+    Bars:UpdateGroupHandles()
     ns.Options:Refresh()
   end)
   f:SetScript("OnMouseUp", function(self, button)
@@ -260,7 +338,7 @@ function Bars:Create(key)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:AddLine((info.unit == "player" and "Player - " or "Target - ") .. SL:BarLabel(self.key), 1, 1, 1)
     GameTooltip:AddLine("Drag to move", 0.7, 0.75, 0.85)
-    if self.cfg.dock == "group" then
+    if ns.GROUP_OF_DOCK[self.cfg.dock] then
       GameTooltip:AddLine("Shift-drag to move the whole group", 0.7, 0.75, 0.85)
     end
     GameTooltip:AddLine("Right-click for settings", 0.7, 0.75, 0.85)
@@ -273,31 +351,29 @@ function Bars:Create(key)
 end
 
 ---------------------------------------------------------------------------
--- Group: a 1x1 anchor point that member bars are offset from, plus a
--- drag handle (outline around the members) shown while unlocked.
+-- Groups: "player" and "target". Each is a 1x1 anchor point that member
+-- bars are offset from, plus a drag handle (outline around the members)
+-- shown while bars are unlocked.
 ---------------------------------------------------------------------------
-local function groupDragStart()
-  if SL.db.locked then return end
-  Bars.group:StartMoving()
-end
+ns.GROUP_IDS = { "player", "target" }
+ns.GROUP_NAMES = { player = "Player group", target = "Target group" }
 
-function Bars:FinishGroupMove()
-  local g = self.group
+function Bars:FinishGroupMove(g)
   g:StopMovingOrSizing()
   g:SetUserPlaced(false)
   self:SavePosition(g)
   self:Layout(g)
-  self:UpdateGroupHandle()
+  self:UpdateGroupHandles()
   ns.Options:Refresh()
 end
 
-function Bars:CreateGroup()
-  local g = CreateFrame("Frame", "Swingline_Group", UIParent)
+function Bars:CreateGroup(gid)
+  local g = CreateFrame("Frame", "Swingline_Group_" .. gid, UIParent)
   g:SetSize(1, 1)
   g:SetMovable(true)
-  self.group = g
+  g.gid = gid
 
-  local h = CreateFrame("Frame", "Swingline_GroupHandle", UIParent)
+  local h = CreateFrame("Frame", nil, UIParent)
   h:SetFrameStrata("LOW")   -- below the bars, so members can still be dragged individually
   h:EnableMouse(true)
   h:RegisterForDrag("LeftButton")
@@ -319,19 +395,21 @@ function Bars:CreateGroup()
   tab.text = tab:CreateFontString(nil, "OVERLAY")
   tab.text:SetFont(FONT, 10, "")
   tab.text:SetPoint("LEFT", 6, 0)
-  tab.text:SetText("SWINGLINE GROUP")
+  tab.text:SetText(ns.GROUP_NAMES[gid]:upper())
   tab:SetWidth(tab.text:GetStringWidth() + 12)
   h.tab = tab
 
   for _, w in ipairs({ h, tab }) do
-    w:SetScript("OnDragStart", groupDragStart)
-    w:SetScript("OnDragStop", function() Bars:FinishGroupMove() end)
+    w:SetScript("OnDragStart", function()
+      if not SL.db.locked then g:StartMoving() end
+    end)
+    w:SetScript("OnDragStop", function() Bars:FinishGroupMove(g) end)
     w:SetScript("OnMouseUp", function(_, button)
-      if button == "RightButton" then ns.Options:Open("group") end
+      if button == "RightButton" then ns.Options:Open("group:" .. gid) end
     end)
     w:SetScript("OnEnter", function()
       GameTooltip:SetOwner(tab, "ANCHOR_TOP")
-      GameTooltip:AddLine("Swingline group", 1, 1, 1)
+      GameTooltip:AddLine(ns.GROUP_NAMES[gid], 1, 1, 1)
       if SL.db.locked then
         GameTooltip:AddLine("Unlock bars to drag the group", 0.7, 0.75, 0.85)
       else
@@ -342,29 +420,30 @@ function Bars:CreateGroup()
     end)
     w:SetScript("OnLeave", function() GameTooltip:Hide() end)
   end
-  self.groupHandle = h
+  g.handle = h
+  self.groups[gid] = g
 end
 
-function Bars:GroupMemberCount()
-  local n = 0
+function Bars:GroupMemberCount(gid)
+  local dock, n = ns.DOCK_OF_GROUP[gid], 0
   for _, cfg in pairs(SL.db.bars) do
-    if cfg.dock == "group" then n = n + 1 end
+    if cfg.dock == dock then n = n + 1 end
   end
   return n
 end
 
--- Fit the handle around all enabled member bars.
-function Bars:UpdateGroupHandle()
-  local h, g = self.groupHandle, self.group
-  if not h or not SL.db then return end
-  local show = not SL.db.locked or (SL.optionsOpen and ns.Options.selected == "group")
+-- Fit a group's handle around its enabled member bars.
+function Bars:UpdateGroupHandle(g)
+  local h = g.handle
+  local show = not SL.db.locked or (SL.optionsOpen and ns.Options.selected == "group:" .. g.gid)
   local gx, gy = pointXY(g, "CENTER")
   if not show or not gx then h:Hide(); return end
 
+  local dock = ns.DOCK_OF_GROUP[g.gid]
   local l, b, r, t
   for _, f in pairs(self.frames) do
     local cfg = f.cfg
-    if cfg and cfg.enabled and cfg.dock == "group" then
+    if cfg and cfg.enabled and cfg.dock == dock then
       local fl, fb, fw, fh = f:GetRect()
       if fl and ns.readable(fl) then
         local s = f:GetEffectiveScale()
@@ -387,8 +466,16 @@ function Bars:UpdateGroupHandle()
   h:Show()
 end
 
+function Bars:UpdateGroupHandles()
+  if not SL.db then return end
+  for _, g in pairs(self.groups) do self:UpdateGroupHandle(g) end
+end
+
 function Bars:CreateAll()
-  if not self.group then self:CreateGroup() end
+  self.groups = self.groups or {}
+  for _, gid in ipairs(ns.GROUP_IDS) do
+    if not self.groups[gid] then self:CreateGroup(gid) end
+  end
   for _, key in ipairs(ns.BAR_ORDER) do
     if not self.frames[key] then self:Create(key) end
   end
@@ -402,6 +489,7 @@ function Bars:Apply(f)
   local db = SL.db
   local cfg = db.bars[f.key]
   local s = STYLE[cfg.style] or STYLE.modern
+  if s.native and not self:NativeAvailable() then s = STYLE.classic end -- not on a Forever client
   f.cfg, f.styleDef = cfg, s
 
   f:SetScale(db.scale)
@@ -477,9 +565,27 @@ function Bars:Apply(f)
     f.label:SetPoint("LEFT", f, "LEFT", 4, 0)
     f.time:SetPoint("RIGHT", f, "RIGHT", -4, 0)
   end
+  f.label:SetTextColor(1, 1, 1, 1)
+  f.time:SetTextColor(1, 1, 1, 1)
+
+  -- Blizzard look: their art, insets, pip and font; our own regions hidden
+  if s.native then
+    self:ApplyNative(f, cfg)
+    f.bg:Hide(); f.fill:Hide(); f.spark:Hide()
+    f.pipOn = cfg.showSpark
+    local font = GameFontHighlightSmall
+    if font then f.label:SetFontObject(font); f.time:SetFontObject(font) end
+    f.label:ClearAllPoints(); f.time:ClearAllPoints()
+    f.label:SetPoint("LEFT", f.nat.sb, "LEFT", 10, 0)
+    f.time:SetPoint("RIGHT", f.nat.sb, "RIGHT", -10, 0)
+  else
+    if f.nat then f.nat:Hide() end
+    f.bg:Show()
+  end
+
   f.label:SetShown(cfg.showLabel)
   f.time:SetShown(cfg.showText)
-  f.lastLabel, f.lastTenth = nil, nil
+  f.lastLabel, f.lastTenth, f.lastOOR = nil, nil, nil
 
   -- lock state
   local unlocked = not db.locked
@@ -491,12 +597,12 @@ end
 
 function Bars:ApplyAll()
   if not SL.db then return end
-  if self.group then
-    self.group.cfg = SL.db.group
-    self:Layout(self.group)   -- group first: members anchor to it
+  for gid, g in pairs(self.groups or {}) do
+    g.cfg = SL.db.groups[gid]
+    self:Layout(g)   -- groups first: members anchor to them
   end
   for _, f in pairs(self.frames) do self:Apply(f) end
-  self:UpdateGroupHandle()
+  self:UpdateGroupHandles()
 end
 
 ---------------------------------------------------------------------------
@@ -510,7 +616,10 @@ function Bars:SetValue(f, pct, remain)
   if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
 
   local w = f:GetWidth() * pct
-  if w < 0.5 then
+  if s.native then
+    f.nat.sb:SetValue(pct)
+    f.nat.pip:SetShown(f.pipOn and pct > 0.001 and pct < 0.999)
+  elseif w < 0.5 then
     f.fill:Hide(); f.spark:Hide()
   else
     f.fill:Show()
@@ -568,7 +677,21 @@ function Bars:UpdateAll()
 
       if show then
         if not f:IsShown() then f:Show() end
-        f:SetAlpha((not preview and SL.outOfRange[key]) and 0.4 or 1)
+        local oor = (not preview and SL.outOfRange[key]) and true or false
+        if f.styleDef.native then
+          -- Blizzard dims the art and turns the labels red when out of range
+          f:SetAlpha(1)
+          f.nat:SetAlpha(oor and 0.4 or 1)
+          if oor ~= f.lastOOR then
+            f.lastOOR = oor
+            local c = oor and RED_FONT_COLOR or HIGHLIGHT_FONT_COLOR
+            local r, g, b = 1, oor and 0.1 or 1, oor and 0.1 or 1
+            if c and c.GetRGB then r, g, b = c:GetRGB() end
+            f.label:SetTextColor(r, g, b); f.time:SetTextColor(r, g, b)
+          end
+        else
+          f:SetAlpha(oor and 0.4 or 1)
+        end
         self:SetValue(f, pct, remain)
       elseif f:IsShown() then
         f:Hide()

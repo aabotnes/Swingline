@@ -52,23 +52,34 @@ ns.BAR_INFO = {
   targetRanged = { unit = "target", kind = "ranged", name = "Ranged",    phase = 1.8 },
 }
 
-local function barDefaults(unit, color, dockY, freeX, freeY, height)
+-- Defaults = the Classic look: each unit's bars sit in its group, and the
+-- group hangs below that unit's frame.
+local function barDefaults(unit, color, groupY, height)
   return {
     enabled   = true,
-    style     = "modern",
+    style     = "classic",
     width     = 200,
     height    = height,
     color     = { r = color[1], g = color[2], b = color[3] },
-    bgAlpha   = 0.6,
+    bgAlpha   = 0.5,
     fill      = "fill",     -- "fill" | "drain"
     showText  = true,
     showLabel = true,
     showSpark = true,
-    dock      = unit,       -- "none" | "player" | "target" | "custom"
+    dock      = unit .. "Group", -- "none" | "playerGroup" | "targetGroup" | "player" | "target" | "custom"
     dockFrame = "",         -- frame name when dock == "custom"
     dockSide  = "BOTTOM",   -- BOTTOM | TOP | LEFT | RIGHT | CENTER
-    x = 0, y = dockY,       -- offset from the docked frame
-    freeX = freeX, freeY = freeY, -- offset from screen center when not docked
+    x = 0, y = groupY,      -- offset from whatever it's docked to
+    freeX = unit == "player" and -170 or 170, -- offset from screen center when not docked
+    freeY = -150 + groupY,
+  }
+end
+
+local function groupDefaults(unit)
+  return {
+    dock = unit, dockFrame = "", dockSide = "BOTTOM",
+    x = 0, y = -8,
+    freeX = unit == "player" and -170 or 170, freeY = -150,
   }
 end
 
@@ -80,18 +91,18 @@ ns.DEFAULTS = {
   rangeDim   = true,
   scale      = 1,
   fontSize   = 11,
-  -- Shared anchor point. Bars with dock = "group" are offset from it.
-  group = {
-    dock = "player", dockFrame = "", dockSide = "BOTTOM",
-    x = 0, y = -4, freeX = 0, freeY = -150,
+  -- Anchor points for the player's and the target's bars
+  groups = {
+    player = groupDefaults("player"),
+    target = groupDefaults("target"),
   },
   bars = {
-    playerMain   = barDefaults("player", { 0.30, 0.62, 1.00 },  -4, -170, -150, 14),
-    playerOff    = barDefaults("player", { 0.64, 0.46, 1.00 }, -22, -170, -168, 10),
-    playerRanged = barDefaults("player", { 0.32, 0.86, 0.56 }, -36, -170, -182, 10),
-    targetMain   = barDefaults("target", { 1.00, 0.36, 0.34 },  -4,  170, -150, 14),
-    targetOff    = barDefaults("target", { 1.00, 0.60, 0.30 }, -22,  170, -168, 10),
-    targetRanged = barDefaults("target", { 1.00, 0.82, 0.30 }, -36,  170, -182, 10),
+    playerMain   = barDefaults("player", { 0.30, 0.62, 1.00 },   0, 14),
+    playerOff    = barDefaults("player", { 0.64, 0.46, 1.00 }, -22, 12),
+    playerRanged = barDefaults("player", { 0.32, 0.86, 0.56 }, -42, 12),
+    targetMain   = barDefaults("target", { 1.00, 0.36, 0.34 },   0, 14),
+    targetOff    = barDefaults("target", { 1.00, 0.60, 0.30 }, -22, 12),
+    targetRanged = barDefaults("target", { 1.00, 0.82, 0.30 }, -42, 12),
   },
 }
 
@@ -115,51 +126,68 @@ local function merge(dst, src)
 end
 
 ---------------------------------------------------------------------------
--- Built-in profiles (applied on top of DEFAULTS)
+-- Built-in profiles (applied on top of DEFAULTS). Every one keeps the bars
+-- in their unit's group; the groups dock to the unit frames.
 ---------------------------------------------------------------------------
 local function eachBar(p, fn)
   for key, cfg in pairs(p.bars) do fn(cfg, ns.BAR_INFO[key], key) end
 end
 
-ns.PRESETS = {
-  { name = "Default", desc = "Labelled bars below your player and target frames.", apply = function() end },
+local function eachGroup(p, fn)
+  for gid, g in pairs(p.groups) do fn(g, gid) end
+end
 
-  { name = "Frame Lines", desc = "Hair-thin lines across the top of your unit frames.", apply = function(p)
+ns.DEFAULT_PROFILE = "Classic"
+
+ns.PRESETS = {
+  { name = "Classic", desc = "Blizzard-style bars with borders, labels and timers, below your unit frames.",
+    apply = function() end },
+
+  { name = "Minimalistic", desc = "Hair-thin lines across the top of your unit frames.", apply = function(p)
+    eachGroup(p, function(g) g.dockSide, g.x, g.y = "TOP", 0, 0 end)
     local Y = { main = -10, off = -13, ranged = -15 }
     eachBar(p, function(c, info)
       c.style, c.width, c.height, c.bgAlpha = "modern", 180, 2, 0.6
       c.showText, c.showLabel, c.showSpark, c.fill = false, false, true, "fill"
-      c.dock, c.dockSide, c.x, c.y = info.unit, "TOP", 0, Y[info.kind]
+      c.dockSide, c.x, c.y = "TOP", 0, Y[info.kind]
     end)
   end },
 
-  { name = "Center Stack", desc = "One group under your character: target bars on top, yours below.", apply = function(p)
-    p.group.dock, p.group.freeX, p.group.freeY = "none", 0, -170
-    local Y = { targetMain = 50, targetOff = 34, targetRanged = 18,
-                playerMain = 0, playerOff = -20, playerRanged = -36 }
-    eachBar(p, function(c, _, key)
-      c.style, c.width = "modern", 240
+  { name = "WoW Forever", desc = "The game's own swing bar art, below your unit frames.", apply = function(p)
+    local w, h = 200, 22
+    if ns.Bars and ns.Bars.NativeSize then
+      local nw, nh = ns.Bars:NativeSize()
+      if nw then w, h = nw, nh end
+    end
+    eachGroup(p, function(g) g.y = -2 end)
+    local step = math.max(h - 6, 6)   -- Blizzard overlaps its bars by 6px
+    local Y = { main = 0, off = -step, ranged = -2 * step }
+    eachBar(p, function(c, info)
+      c.style, c.width, c.height = "forever", w, h
+      c.showText, c.showLabel, c.showSpark = true, true, true
+      c.dockSide, c.x, c.y = "BOTTOM", 0, Y[info.kind]
+    end)
+  end },
+
+  { name = "Center Stack", desc = "Both groups under your character: target bars on top, yours below.", apply = function(p)
+    p.groups.player.dock, p.groups.player.freeX, p.groups.player.freeY = "none", 0, -170
+    p.groups.target.dock, p.groups.target.freeX, p.groups.target.freeY = "none", 0, -120
+    local Y = { main = 0, off = -16, ranged = -32 }
+    eachBar(p, function(c, info, key)
+      c.style, c.width, c.bgAlpha = "modern", 240, 0.6
       c.height = (key == "playerMain") and 16 or 12
-      c.dock, c.dockSide, c.x, c.y = "group", "BOTTOM", 0, Y[key]
+      local y = Y[info.kind]
+      if info.unit == "player" and info.kind ~= "main" then y = y - 4 end -- room for the taller bar
+      c.dockSide, c.x, c.y = "BOTTOM", 0, y
     end)
   end },
 
   { name = "Neon", desc = "Glowing slim bars below your unit frames.", apply = function(p)
-    local Y = { main = -8, off = -22, ranged = -36 }
+    local Y = { main = 0, off = -14, ranged = -28 }
     eachBar(p, function(c, info)
       c.style, c.width, c.height, c.bgAlpha = "neon", 190, 8, 0.7
       c.showText, c.showLabel, c.showSpark = false, false, true
-      c.dock, c.dockSide, c.x, c.y = info.unit, "BOTTOM", 0, Y[info.kind]
-    end)
-  end },
-
-  { name = "Classic", desc = "Blizzard-style bars with borders, labels and timers.", apply = function(p)
-    local Y = { main = -8, off = -30, ranged = -50 }
-    local H = { main = 14, off = 12, ranged = 12 }
-    eachBar(p, function(c, info)
-      c.style, c.width, c.height, c.bgAlpha = "classic", 200, H[info.kind], 0.5
-      c.showText, c.showLabel, c.showSpark = true, true, true
-      c.dock, c.dockSide, c.x, c.y = info.unit, "BOTTOM", 0, Y[info.kind]
+      c.dockSide, c.x, c.y = "BOTTOM", 0, Y[info.kind]
     end)
   end },
 }
@@ -182,23 +210,69 @@ end
 local function say(msg) print("|cff6190ffSwingline|r: " .. msg) end
 ns.say = say
 
--- Moves pre-1.2 flat settings into a "Default" profile and adds built-ins.
+local SCHEMA = 3
+
+-- v1.1/1.2 had a single "group": it becomes the player group.
+local function migrateProfile(p)
+  if type(p) ~= "table" then return end
+  if p.group then
+    p.groups = p.groups or {}
+    p.groups.player = p.groups.player or p.group
+    p.group = nil
+  end
+  for _, c in pairs(p.bars or {}) do
+    if c.dock == "group" then c.dock = "playerGroup" end
+  end
+end
+
 local function upgradeDB()
   SwinglineDB = SwinglineDB or {}
   local db = SwinglineDB
+
+  -- v1.0/1.1: flat settings become the "Default" profile
   if not db.profiles then
     local legacy
     if db.bars then
       legacy = {}
       for k, v in pairs(db) do legacy[k] = v end
       wipe(db)
+      db.legacyDefault = true -- characters without a profile pick keep these settings
     end
     db.profiles = { Default = legacy }
   end
   db.profileKeys = db.profileKeys or {}
-  if not db.presetsSeeded then
-    SL:RestorePresets(true)
-    db.presetsSeeded = 1
+  for _, p in pairs(db.profiles) do migrateProfile(p) end
+
+  -- v1.3: built-in profiles are rebuilt around the two groups. A built-in
+  -- that a character was using is kept as "<name> (backup)" first.
+  if (db.schema or 0) < SCHEMA then
+    if db.presetsSeeded then
+      local inUse = {}
+      for _, name in pairs(db.profileKeys) do inUse[name] = true end
+      local renamed = { ["Frame Lines"] = "Minimalistic" }
+      for _, name in ipairs({ "Frame Lines", "Center Stack", "Neon", "Classic" }) do
+        if db.profiles[name] then
+          if inUse[name] then db.profiles[name .. " (backup)"] = db.profiles[name] end
+          db.profiles[name] = nil
+          local new = renamed[name] or name
+          for char, n in pairs(db.profileKeys) do
+            if n == name then db.profileKeys[char] = new end
+          end
+        end
+      end
+    end
+    db.seeded = {}
+    db.presetsSeeded = nil
+    db.schema = SCHEMA
+  end
+
+  -- Add each built-in profile once (deleted ones stay deleted).
+  db.seeded = db.seeded or {}
+  for _, p in ipairs(ns.PRESETS) do
+    if not db.seeded[p.name] then
+      if not db.profiles[p.name] then db.profiles[p.name] = ns.BuildPreset(p.name) end
+      db.seeded[p.name] = true
+    end
   end
 end
 
@@ -279,8 +353,22 @@ function SL:DeleteProfile()
   for char, p in pairs(SwinglineDB.profileKeys) do
     if p == old then SwinglineDB.profileKeys[char] = nil end
   end
-  self:SetProfile(SwinglineDB.profiles.Default and "Default" or self:ProfileNames()[1])
+  local fallback = ns.DEFAULT_PROFILE
+  if not SwinglineDB.profiles[fallback] then fallback = self:ProfileNames()[1] end
+  self:SetProfile(fallback)
   return true
+end
+
+-- Hide/show the game's own swing bars (CVar showSwingTimer). Account-wide.
+function SL:BlizzardBarsAvailable()
+  return C_CVar and C_CVar.GetCVar and C_CVar.GetCVar("showSwingTimer") ~= nil
+end
+
+function SL:SetHideBlizzard(hide)
+  SwinglineDB.hideBlizzard = hide and true or nil
+  if self:BlizzardBarsAvailable() then
+    pcall(C_CVar.SetCVar, "showSwingTimer", hide and "0" or "1")
+  end
 end
 
 -- Built-in profiles reset to their own look; custom ones to the defaults.
@@ -308,9 +396,14 @@ function SL:ApplyAll()
   if ns.Bars then ns.Bars:ApplyAll() end
 end
 
+-- Use the game's own (localized) swing timer strings where they exist.
+local GAME_LABEL = { main = "SWING_TIMER_MAIN_HAND", off = "SWING_TIMER_OFF_HAND", ranged = "SWING_TIMER_RANGED" }
+
 function SL:BarLabel(key)
-  if key == "playerMain" and self.equip.twoHand then return "Two-Hand" end
-  return ns.BAR_INFO[key].name
+  if key == "playerMain" and self.equip.twoHand then return _G.INVTYPE_2HWEAPON or "Two-Hand" end
+  local info = ns.BAR_INFO[key]
+  local s = _G[GAME_LABEL[info.kind]]
+  return type(s) == "string" and s or info.name
 end
 
 local function resetTimer(key) wipe(SL.timers[key]) end
@@ -567,9 +660,19 @@ end
 
 function SL:PLAYER_LOGIN()
   self.charKey = (UnitName("player") or "Unknown") .. " - " .. (GetRealmName() or "Unknown")
+  local profiles = SwinglineDB.profiles
   local name = SwinglineDB.profileKeys[self.charKey]
-  if not (name and SwinglineDB.profiles[name]) then name = "Default" end
+  if not (name and profiles[name]) then
+    if SwinglineDB.legacyDefault and profiles.Default then
+      name = "Default"                 -- upgraded from v1.0/1.1: keep the old look
+    elseif profiles[ns.DEFAULT_PROFILE] then
+      name = ns.DEFAULT_PROFILE
+    else
+      name = self:ProfileNames()[1] or ns.DEFAULT_PROFILE
+    end
+  end
   self:SetProfile(name)
+  if SwinglineDB.hideBlizzard then self:SetHideBlizzard(true) end
 
   self:UpdateEquipment()
   ns.Bars:CreateAll()

@@ -1,5 +1,20 @@
 # Swingline
 
+## v1.3.0
+
+- **New look: WoW Forever.** Uses the game's own swing timer art (`ui-swingtimerbar-*`) with the same insets, pip and font as the built-in bars. Like the game's bars, it dims and turns red when you're out of range. A button sets a bar to the game's own size.
+- **New option: Hide the game's own swing bars.** It's on the General page and controls the `showSwingTimer` setting.
+- **Two groups:** one for player bars and one for target bars, each anchored to its unit frame. Each has a *Group* page in the sidebar. Shift-drag moves a bar's own group.
+- **Profiles:**
+  - Every built-in profile now anchors bars to the player and target groups.
+  - **Classic** is the default for new characters and for "New (defaults)".
+  - *Frame Lines* is renamed **Minimalistic**.
+  - New **WoW Forever** profile.
+- Bar labels use the game's own (localized) swing timer names.
+- **Upgrading:**
+  - A v1.1/1.2 single group becomes the player group.
+  - Built-in profiles are rebuilt for the new layout. If a character was using one, the old version is kept as "*name* (backup)".
+
 ## v1.2.0
 
 - **New: profiles.** Profiles are shared account-wide, and each character remembers which one it uses. You can create a new profile, duplicate, rename, copy from another profile, reset or delete. Switch profiles on the Profiles page, from General, or with `/swl profile <name>`.

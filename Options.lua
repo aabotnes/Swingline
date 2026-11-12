@@ -548,7 +548,12 @@ function O:BuildGeneral(p)
     tooltip = "Uses the client's native swing range check.",
     disabled = function() return not (C_SwingTimer and C_SwingTimer.EnableRangeCheck) end,
     get = function() return db().rangeDim end,
-    set = function(v) db().rangeDim = v; SL:ApplyRangeCheck() end }, 14)
+    set = function(v) db().rangeDim = v; SL:ApplyRangeCheck() end }, 4)
+  L:Add("Toggle", { label = "Hide the game's own swing bars",
+    tooltip = "Turns off WoW Forever's built-in swing timer (all characters).",
+    disabled = function() return not SL:BlizzardBarsAvailable() end,
+    get = function() return SwinglineDB.hideBlizzard end,
+    set = function(v) SL:SetHideBlizzard(v) end }, 14)
   L:Add("Note", { height = 90, text =
     "Your swings use WoW Forever's native swing event. Target timers are estimated from the hits your " ..
     "target lands on you (addons can't read the combat log on Forever), so treat them as a guide.\n\n" ..
@@ -663,18 +668,26 @@ function O:BuildBar(p, key)
     get = function() return cfg().width end, set = function(v) cfg().width = v end })
   L:Add("Slider", { label = "Height", min = 2, max = 60, step = 1, disabled = isDisabled,
     get = function() return cfg().height end, set = function(v) cfg().height = v end })
-  L:Add("Color", { label = "Bar color", disabled = isDisabled,
+  -- The game's own art carries its colours, so these don't apply to it
+  local isNative = function() return cfg().style == "forever" end
+  L:Add("Color", { label = "Bar color", disabled = function() return isDisabled() or isNative() end,
     get = function() local c = cfg().color; return c.r, c.g, c.b end,
     set = function(r, g, b) local c = cfg().color; c.r, c.g, c.b = r, g, b end }, 8)
   L:Add("Slider", { label = "Background opacity", min = 0, max = 1, step = 0.05, fmt = pct, parse = fromPct,
-    disabled = isDisabled,
+    disabled = function() return isDisabled() or isNative() end,
     get = function() return cfg().bgAlpha end, set = function(v) cfg().bgAlpha = v end })
   L:Add("Toggle", { label = "Show time remaining", disabled = isDisabled,
     get = function() return cfg().showText end, set = function(v) cfg().showText = v end }, 2)
   L:Add("Toggle", { label = "Show weapon label", disabled = isDisabled,
     get = function() return cfg().showLabel end, set = function(v) cfg().showLabel = v end }, 2)
   L:Add("Toggle", { label = "Show spark", disabled = isDisabled,
-    get = function() return cfg().showSpark end, set = function(v) cfg().showSpark = v end }, 2)
+    get = function() return cfg().showSpark end, set = function(v) cfg().showSpark = v end }, 8)
+  L:Add("Button", { label = "Use the game's bar size",
+    disabled = function() return isDisabled() or not isNative() or not ns.Bars:NativeSize() end,
+    onClick = function()
+      local w, h = ns.Bars:NativeSize()
+      if w then cfg().width, cfg().height = w, h; O:Changed() end
+    end })
 
   local docked = function() return cfg().dock ~= "none" end
   local R = p:Column(COL2_X, COL_Y, COL_W)
@@ -721,17 +734,20 @@ function O:BuildBar(p, key)
   table.insert(p.widgets, copy)
 end
 
-function O:BuildGroup(p)
-  local function g() return SL.db.group end
+function O:BuildGroup(p, gid)
+  local function g() return SL.db.groups[gid] end
+  local frame = function() return ns.Bars.groups[gid] end
+  local dockValue = ns.DOCK_OF_GROUP[gid]
   local docked = function() return g().dock ~= "none" end
-  p:Title("Group", "Move several bars as one. Member bars keep their own offsets from the group, " ..
-    "and the group has its own anchor and offset.")
+  local unitName = gid == "player" and "Player" or "Target"
+  p:Title(unitName .. "  /  Group", "Moves the " .. gid .. "'s bars as one. Member bars keep their own " ..
+    "offsets from the group, and the group has its own anchor and offset.")
 
   local L = p:Column(COL1_X, COL_Y, COL_W)
   L:Add("Header", { label = "Group anchor" })
   L:Add("Dropdown", { label = "Anchor to", options = ns.GROUP_DOCKS,
     get = function() return g().dock end,
-    set = function(v) ns.Bars:Reanchor(ns.Bars.group, v) end })
+    set = function(v) ns.Bars:Reanchor(frame(), v) end })
   L:Add("Input", { label = "Custom frame name", placeholder = "e.g. ElvUF_Player  (use /fstack)",
     disabled = function() return g().dock ~= "custom" end,
     get = function() return g().dockFrame end, set = function(v) g().dockFrame = v end })
@@ -745,40 +761,44 @@ function O:BuildGroup(p)
     get = function() return docked() and g().y or g().freeY end,
     set = function(v) if docked() then g().y = v else g().freeY = v end end }, 14)
   local reset = W.Button(p, { label = "Reset group position", onClick = function()
-    local d = ns.DEFAULTS.group
-    for k, v in pairs(d) do g()[k] = v end
+    for k, v in pairs(ns.DEFAULTS.groups[gid]) do g()[k] = v end
     O:Changed()
   end })
   reset:SetPoint("TOPLEFT", p, "TOPLEFT", COL1_X, L.y)
   reset:SetWidth(COL_W)
   table.insert(p.widgets, reset)
 
+  local own = {}
+  for _, key in ipairs(ns.BAR_ORDER) do
+    if ns.BAR_INFO[key].unit == gid then own[#own + 1] = key end
+  end
+
   local R = p:Column(COL2_X, COL_Y, COL_W)
   R:Add("Header", { label = "Members" })
-  for _, key in ipairs(ns.BAR_ORDER) do
-    local info = ns.BAR_INFO[key]
+  for _, key in ipairs(own) do
     R:Add("Toggle", {
-      label = (info.unit == "player" and "Player" or "Target") .. "  /  " .. info.name,
-      get = function() return SL.db.bars[key].dock == "group" end,
-      set = function(v) ns.Bars:Reanchor(ns.Bars.frames[key], v and "group" or "none") end,
+      label = ns.BAR_INFO[key].name,
+      get = function() return SL.db.bars[key].dock == dockValue end,
+      set = function(v) ns.Bars:Reanchor(ns.Bars.frames[key], v and dockValue or "none") end,
     }, 2)
   end
   R.y = R.y - 10
   ButtonPair(p, R, COL2_X,
     { label = "Add all", onClick = function()
-        for _, key in ipairs(ns.BAR_ORDER) do ns.Bars:Reanchor(ns.Bars.frames[key], "group") end
+        for _, key in ipairs(own) do ns.Bars:Reanchor(ns.Bars.frames[key], dockValue) end
         O:Changed()
       end },
     { label = "Remove all", onClick = function()
-        for _, key in ipairs(ns.BAR_ORDER) do
-          if SL.db.bars[key].dock == "group" then ns.Bars:Reanchor(ns.Bars.frames[key], "none") end
+        for _, key in ipairs(own) do
+          if SL.db.bars[key].dock == dockValue then ns.Bars:Reanchor(ns.Bars.frames[key], "none") end
         end
         O:Changed()
       end })
-  R:Add("Note", { height = 70, text =
+  R:Add("Note", { height = 96, text =
     "Bars stay where they are when you add or remove them; only their offsets change. " ..
     "Unlock bars to drag the group by its tab, or Shift-drag any member bar. " ..
-    "A member's offsets (on its own page) are measured from the group." })
+    "A member's offsets (on its own page) are measured from the group. Any bar can also " ..
+    "join this group from its own Anchor to setting." })
 end
 
 ---------------------------------------------------------------------------
@@ -935,15 +955,16 @@ function O:Build()
     return b
   end
   addNav("general", "General")
-  addNav("group", "Group").stateFn = function()
-    local n = ns.Bars:GroupMemberCount()
-    return n > 0 and (n .. " BARS") or ""
-  end
   addNav("profiles", "Profiles")
   for _, group in ipairs({ { "player", "PLAYER" }, { "target", "TARGET" } }) do
     y = y - 12
     SectionLabel(side, group[2], y)
     y = y - 20
+    local gid = group[1]
+    addNav("group:" .. gid, "Group").stateFn = function()
+      local n = ns.Bars:GroupMemberCount(gid)
+      return n > 0 and (n .. " BARS") or ""
+    end
     for _, key in ipairs(ns.BAR_ORDER) do
       local info = ns.BAR_INFO[key]
       if info.unit == group[1] then
@@ -974,11 +995,11 @@ function O:Build()
   f:SetScript("OnShow", function()
     SL.optionsOpen = true
     O:Refresh()
-    ns.Bars:UpdateGroupHandle()
+    ns.Bars:UpdateGroupHandles()
   end)
   f:SetScript("OnHide", function()
     SL.optionsOpen = false
-    ns.Bars:UpdateGroupHandle()
+    ns.Bars:UpdateGroupHandles()
     if Menu then Menu:Hide() end
     if ColorPickerFrame and ColorPickerFrame:IsShown() then ColorPickerFrame:Hide() end
   end)
@@ -994,14 +1015,14 @@ function O:Select(id)
   if not p then
     p = NewPage(self.content)
     if id == "general" then self:BuildGeneral(p)
-    elseif id == "group" then self:BuildGroup(p)
+    elseif id:find("^group:") then self:BuildGroup(p, id:sub(7))
     elseif id == "profiles" then self:BuildProfiles(p)
     else self:BuildBar(p, id) end
     self.pages[id] = p
   end
   p:Show()
   p:Refresh()
-  ns.Bars:UpdateGroupHandle()
+  ns.Bars:UpdateGroupHandles()
 end
 
 function O:Refresh()
