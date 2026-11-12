@@ -80,6 +80,11 @@ ns.DEFAULTS = {
   rangeDim   = true,
   scale      = 1,
   fontSize   = 11,
+  -- Shared anchor point. Bars with dock = "group" are offset from it.
+  group = {
+    dock = "player", dockFrame = "", dockSide = "BOTTOM",
+    x = 0, y = -4, freeX = 0, freeY = -150,
+  },
   bars = {
     playerMain   = barDefaults("player", { 0.30, 0.62, 1.00 },  -4, -170, -150, 14),
     playerOff    = barDefaults("player", { 0.64, 0.46, 1.00 }, -22, -170, -168, 10),
@@ -109,11 +114,179 @@ local function merge(dst, src)
   end
 end
 
-function SL:ResetDB()
-  SwinglineDB = deepcopy(ns.DEFAULTS)
-  self.db = SwinglineDB
+---------------------------------------------------------------------------
+-- Built-in profiles (applied on top of DEFAULTS)
+---------------------------------------------------------------------------
+local function eachBar(p, fn)
+  for key, cfg in pairs(p.bars) do fn(cfg, ns.BAR_INFO[key], key) end
+end
+
+ns.PRESETS = {
+  { name = "Default", desc = "Labelled bars below your player and target frames.", apply = function() end },
+
+  { name = "Frame Lines", desc = "Hair-thin lines across the top of your unit frames.", apply = function(p)
+    local Y = { main = -10, off = -13, ranged = -15 }
+    eachBar(p, function(c, info)
+      c.style, c.width, c.height, c.bgAlpha = "modern", 180, 2, 0.6
+      c.showText, c.showLabel, c.showSpark, c.fill = false, false, true, "fill"
+      c.dock, c.dockSide, c.x, c.y = info.unit, "TOP", 0, Y[info.kind]
+    end)
+  end },
+
+  { name = "Center Stack", desc = "One group under your character: target bars on top, yours below.", apply = function(p)
+    p.group.dock, p.group.freeX, p.group.freeY = "none", 0, -170
+    local Y = { targetMain = 50, targetOff = 34, targetRanged = 18,
+                playerMain = 0, playerOff = -20, playerRanged = -36 }
+    eachBar(p, function(c, _, key)
+      c.style, c.width = "modern", 240
+      c.height = (key == "playerMain") and 16 or 12
+      c.dock, c.dockSide, c.x, c.y = "group", "BOTTOM", 0, Y[key]
+    end)
+  end },
+
+  { name = "Neon", desc = "Glowing slim bars below your unit frames.", apply = function(p)
+    local Y = { main = -8, off = -22, ranged = -36 }
+    eachBar(p, function(c, info)
+      c.style, c.width, c.height, c.bgAlpha = "neon", 190, 8, 0.7
+      c.showText, c.showLabel, c.showSpark = false, false, true
+      c.dock, c.dockSide, c.x, c.y = info.unit, "BOTTOM", 0, Y[info.kind]
+    end)
+  end },
+
+  { name = "Classic", desc = "Blizzard-style bars with borders, labels and timers.", apply = function(p)
+    local Y = { main = -8, off = -30, ranged = -50 }
+    local H = { main = 14, off = 12, ranged = 12 }
+    eachBar(p, function(c, info)
+      c.style, c.width, c.height, c.bgAlpha = "classic", 200, H[info.kind], 0.5
+      c.showText, c.showLabel, c.showSpark = true, true, true
+      c.dock, c.dockSide, c.x, c.y = info.unit, "BOTTOM", 0, Y[info.kind]
+    end)
+  end },
+}
+
+local PRESET_BY_NAME = {}
+for _, p in ipairs(ns.PRESETS) do PRESET_BY_NAME[p.name] = p end
+ns.PRESET_BY_NAME = PRESET_BY_NAME
+
+function ns.BuildPreset(name)
+  local p = deepcopy(ns.DEFAULTS)
+  local preset = PRESET_BY_NAME[name]
+  if preset then preset.apply(p) end
+  return p
+end
+
+---------------------------------------------------------------------------
+-- Profiles: SwinglineDB.profiles[name] holds settings (account-wide);
+-- SwinglineDB.profileKeys["Name - Realm"] remembers each character's pick.
+---------------------------------------------------------------------------
+local function say(msg) print("|cff6190ffSwingline|r: " .. msg) end
+ns.say = say
+
+-- Moves pre-1.2 flat settings into a "Default" profile and adds built-ins.
+local function upgradeDB()
+  SwinglineDB = SwinglineDB or {}
+  local db = SwinglineDB
+  if not db.profiles then
+    local legacy
+    if db.bars then
+      legacy = {}
+      for k, v in pairs(db) do legacy[k] = v end
+      wipe(db)
+    end
+    db.profiles = { Default = legacy }
+  end
+  db.profileKeys = db.profileKeys or {}
+  if not db.presetsSeeded then
+    SL:RestorePresets(true)
+    db.presetsSeeded = 1
+  end
+end
+
+function SL:RestorePresets(silent)
+  local added = 0
+  for _, p in ipairs(ns.PRESETS) do
+    if not SwinglineDB.profiles[p.name] then
+      SwinglineDB.profiles[p.name] = ns.BuildPreset(p.name)
+      added = added + 1
+    end
+  end
+  if not silent then
+    say(added > 0 and ("restored " .. added .. " built-in profile(s)") or "all built-in profiles already exist")
+  end
+end
+
+function SL:ProfileNames()
+  local names = {}
+  for name in pairs(SwinglineDB.profiles) do names[#names + 1] = name end
+  table.sort(names, function(a, b) return a:lower() < b:lower() end)
+  return names
+end
+
+function SL:SetProfile(name)
+  local profiles = SwinglineDB.profiles
+  if not profiles[name] then profiles[name] = ns.BuildPreset(name) end
+  merge(profiles[name], ns.DEFAULTS)
+  SwinglineDB.profileKeys[self.charKey] = name
+  self.profileName = name
+  self.db = profiles[name]
+  wipe(self.outOfRange)
   self:ApplyRangeCheck()
   self:ApplyAll()
+end
+
+local function validName(name)
+  name = name and strtrim(name) or ""
+  return name ~= "" and name or nil
+end
+
+-- copyFrom: profile name to duplicate, or nil for default settings
+function SL:NewProfile(name, copyFrom)
+  name = validName(name)
+  if not name then say("enter a profile name first"); return false end
+  if SwinglineDB.profiles[name] then say("a profile named \"" .. name .. "\" already exists"); return false end
+  local src = copyFrom and SwinglineDB.profiles[copyFrom]
+  SwinglineDB.profiles[name] = src and deepcopy(src) or deepcopy(ns.DEFAULTS)
+  self:SetProfile(name)
+  return true
+end
+
+function SL:CopyProfile(from)
+  local src = from and SwinglineDB.profiles[from]
+  if not src or from == self.profileName then return false end
+  SwinglineDB.profiles[self.profileName] = deepcopy(src)
+  self:SetProfile(self.profileName)
+  return true
+end
+
+function SL:RenameProfile(newName)
+  newName = validName(newName)
+  local old = self.profileName
+  if not newName or newName == old then return false end
+  if SwinglineDB.profiles[newName] then say("a profile named \"" .. newName .. "\" already exists"); return false end
+  SwinglineDB.profiles[newName], SwinglineDB.profiles[old] = SwinglineDB.profiles[old], nil
+  for char, p in pairs(SwinglineDB.profileKeys) do
+    if p == old then SwinglineDB.profileKeys[char] = newName end
+  end
+  self:SetProfile(newName)
+  return true
+end
+
+function SL:DeleteProfile()
+  local names = self:ProfileNames()
+  if #names <= 1 then say("can't delete the only profile"); return false end
+  local old = self.profileName
+  SwinglineDB.profiles[old] = nil
+  for char, p in pairs(SwinglineDB.profileKeys) do
+    if p == old then SwinglineDB.profileKeys[char] = nil end
+  end
+  self:SetProfile(SwinglineDB.profiles.Default and "Default" or self:ProfileNames()[1])
+  return true
+end
+
+-- Built-in profiles reset to their own look; custom ones to the defaults.
+function SL:ResetProfile()
+  SwinglineDB.profiles[self.profileName] = ns.BuildPreset(self.profileName)
+  self:SetProfile(self.profileName)
 end
 
 ---------------------------------------------------------------------------
@@ -389,12 +562,15 @@ SL:RegisterEvent("PLAYER_LOGIN")
 function SL:ADDON_LOADED(name)
   if name ~= ADDON then return end
   self:UnregisterEvent("ADDON_LOADED")
-  SwinglineDB = SwinglineDB or {}
-  merge(SwinglineDB, ns.DEFAULTS)
-  self.db = SwinglineDB
+  upgradeDB()
 end
 
 function SL:PLAYER_LOGIN()
+  self.charKey = (UnitName("player") or "Unknown") .. " - " .. (GetRealmName() or "Unknown")
+  local name = SwinglineDB.profileKeys[self.charKey]
+  if not (name and SwinglineDB.profiles[name]) then name = "Default" end
+  self:SetProfile(name)
+
   self:UpdateEquipment()
   ns.Bars:CreateAll()
   ns.Options:RegisterBlizzardPanel()
@@ -428,9 +604,19 @@ end
 -- Slash commands & addon compartment
 ---------------------------------------------------------------------------
 SLASH_SWINGLINE1, SLASH_SWINGLINE2 = "/swingline", "/swl"
-SlashCmdList.SWINGLINE = function(msg)
-  msg = (msg or ""):lower():match("^%s*(.-)%s*$")
-  if msg == "lock" or msg == "unlock" then
+SlashCmdList.SWINGLINE = function(raw)
+  raw = (raw or ""):match("^%s*(.-)%s*$")
+  local msg = raw:lower()
+  local profileArg = raw:match("^[Pp][Rr][Oo][Ff][Ii][Ll][Ee]%s+(.+)$")
+  if profileArg then
+    if SwinglineDB.profiles[profileArg] then
+      SL:SetProfile(profileArg); ns.Options:Refresh()
+      print("|cff6190ffSwingline|r: profile \"" .. profileArg .. "\" loaded")
+    else
+      print("|cff6190ffSwingline|r: no profile named \"" .. profileArg .. "\". Profiles: " ..
+        table.concat(SL:ProfileNames(), ", "))
+    end
+  elseif msg == "lock" or msg == "unlock" then
     SL.db.locked = (msg == "lock")
     SL:ApplyAll(); ns.Options:Refresh()
     print("|cff6190ffSwingline|r: bars " .. (SL.db.locked and "locked" or "unlocked - drag to move"))
@@ -439,8 +625,8 @@ SlashCmdList.SWINGLINE = function(msg)
     SL:ApplyAll(); ns.Options:Refresh()
     print("|cff6190ffSwingline|r: test mode " .. (SL.db.testMode and "on" or "off"))
   elseif msg == "reset" then
-    SL:ResetDB(); ns.Options:Refresh()
-    print("|cff6190ffSwingline|r: settings reset")
+    SL:ResetProfile(); ns.Options:Refresh()
+    print("|cff6190ffSwingline|r: profile \"" .. SL.profileName .. "\" reset")
   else
     ns.Options:Toggle()
   end

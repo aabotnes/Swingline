@@ -169,6 +169,7 @@ function W.Note(parent, o)
   t:SetWordWrap(true)
   t:SetJustifyV("TOP")
   t:SetText(o.text)
+  w.text = t
   w.Refresh = function() end
   return w
 end
@@ -398,6 +399,7 @@ function W.Input(parent, o)
   box:SetAutoFocus(false)
   box:SetTextInsets(9, 9, 0, 0)
 
+  w.box = box
   local ph = Text(box, 12, C.muted)
   ph:SetPoint("LEFT", 9, 0)
   ph:SetText(o.placeholder or "")
@@ -514,6 +516,20 @@ local function NewPage(content)
   return p
 end
 
+-- Two half-width buttons side by side at the column's current position.
+local function ButtonPair(p, col, x, a, b)
+  local w = (COL_W - 8) / 2
+  local b1 = W.Button(p, a)
+  b1:SetPoint("TOPLEFT", p, "TOPLEFT", x, col.y)
+  b1:SetWidth(w)
+  local b2 = W.Button(p, b)
+  b2:SetPoint("TOPLEFT", b1, "TOPRIGHT", 8, 0)
+  b2:SetWidth(w)
+  table.insert(p.widgets, b1)
+  table.insert(p.widgets, b2)
+  col.y = col.y - 38
+end
+
 function O:BuildGeneral(p)
   local db = function() return SL.db end
   p:Title("General", "Behaviour and appearance shared by every bar.")
@@ -547,9 +563,69 @@ function O:BuildGeneral(p)
   R:Add("Dropdown", { label = "Apply a look to every bar", options = ns.STYLES, placeholder = "Choose a look...",
     get = function() return nil end,
     set = function(v) for _, cfg in pairs(db().bars) do cfg.style = v end end }, 22)
-  R:Add("Header", { label = "Danger zone" })
-  R:Add("Button", { label = "Reset all settings", confirm = "Click again to reset", danger = true,
-    onClick = function() SL:ResetDB() end })
+  R:Add("Header", { label = "Profile" })
+  R:Add("Dropdown", { label = "Active profile", options = O.ProfileOptions,
+    get = function() return SL.profileName end, set = function(v) SL:SetProfile(v) end })
+end
+
+function O.ProfileOptions()
+  local list = {}
+  for _, name in ipairs(SL:ProfileNames()) do list[#list + 1] = { value = name, text = name } end
+  return list
+end
+
+function O:BuildProfiles(p)
+  p:Title("Profiles", "Profiles are shared by all your characters, and each character remembers " ..
+    "which one it uses. Built-in profiles can be edited and reset.")
+
+  local L = p:Column(COL1_X, COL_Y, COL_W)
+  L:Add("Header", { label = "Active profile" })
+  L:Add("Dropdown", { label = "Profile for this character", options = O.ProfileOptions,
+    get = function() return SL.profileName end, set = function(v) SL:SetProfile(v) end })
+  local desc = L:Add("Note", { height = 34, text = "" })
+  function desc:Refresh()
+    local preset = ns.PRESET_BY_NAME[SL.profileName]
+    self.text:SetText(preset and preset.desc or "Custom profile.")
+  end
+
+  L:Add("Header", { label = "Create" })
+  local nameInput = L:Add("Input", { label = "New profile name", placeholder = "e.g. Raid, PvP, Tank...",
+    get = function() return O.pendingName or "" end, set = function(v) O.pendingName = v end })
+  local function create(copy)
+    nameInput.box:ClearFocus()
+    if SL:NewProfile(nameInput.box:GetText(), copy and SL.profileName or nil) then
+      O.pendingName = ""
+      nameInput.box:SetText("")
+    end
+    O:Changed()
+  end
+  ButtonPair(p, L, COL1_X,
+    { label = "New (defaults)", onClick = function() create(false) end },
+    { label = "Duplicate current", onClick = function() create(true) end })
+
+  local R = p:Column(COL2_X, COL_Y, COL_W)
+  R:Add("Header", { label = "Manage current profile" })
+  R:Add("Input", { label = "Rename", get = function() return SL.profileName end,
+    set = function(v) SL:RenameProfile(v) end })
+  R:Add("Dropdown", { label = "Copy settings from", placeholder = "Choose a profile...",
+    options = function()
+      local list = {}
+      for _, opt in ipairs(O.ProfileOptions()) do
+        if opt.value ~= SL.profileName then list[#list + 1] = opt end
+      end
+      return list
+    end,
+    get = function() return O.copySource end, set = function(v) O.copySource = v end })
+  R:Add("Button", { label = "Copy into current profile", confirm = "Click again to overwrite",
+    disabled = function() return not (O.copySource and SwinglineDB.profiles[O.copySource]) end,
+    onClick = function() SL:CopyProfile(O.copySource); O.copySource = nil; O:Changed() end }, 22)
+  R:Add("Button", { label = "Reset current profile", confirm = "Click again to reset", danger = true,
+    onClick = function() SL:ResetProfile(); O:Changed() end })
+  R:Add("Button", { label = "Delete current profile", confirm = "Click again to delete", danger = true,
+    disabled = function() return #SL:ProfileNames() <= 1 end,
+    onClick = function() SL:DeleteProfile(); O:Changed() end })
+  R:Add("Button", { label = "Restore built-in profiles",
+    onClick = function() SL:RestorePresets(); O:Changed() end })
 end
 
 local BAR_DESC = {
@@ -604,7 +680,8 @@ function O:BuildBar(p, key)
   local R = p:Column(COL2_X, COL_Y, COL_W)
   R:Add("Header", { label = "Position" })
   R:Add("Dropdown", { label = "Anchor to", options = ns.DOCKS, disabled = isDisabled,
-    get = function() return cfg().dock end, set = function(v) cfg().dock = v end })
+    get = function() return cfg().dock end,
+    set = function(v) ns.Bars:Reanchor(ns.Bars.frames[key], v) end })
   R:Add("Input", { label = "Custom frame name", placeholder = "e.g. ElvUF_Player  (use /fstack)",
     disabled = function() return isDisabled() or cfg().dock ~= "custom" end,
     get = function() return cfg().dockFrame end, set = function(v) cfg().dockFrame = v end })
@@ -642,6 +719,66 @@ function O:BuildBar(p, key)
   copy:SetPoint("TOPLEFT", reset, "TOPRIGHT", 8, 0)
   copy:SetWidth((COL_W - 8) / 2)
   table.insert(p.widgets, copy)
+end
+
+function O:BuildGroup(p)
+  local function g() return SL.db.group end
+  local docked = function() return g().dock ~= "none" end
+  p:Title("Group", "Move several bars as one. Member bars keep their own offsets from the group, " ..
+    "and the group has its own anchor and offset.")
+
+  local L = p:Column(COL1_X, COL_Y, COL_W)
+  L:Add("Header", { label = "Group anchor" })
+  L:Add("Dropdown", { label = "Anchor to", options = ns.GROUP_DOCKS,
+    get = function() return g().dock end,
+    set = function(v) ns.Bars:Reanchor(ns.Bars.group, v) end })
+  L:Add("Input", { label = "Custom frame name", placeholder = "e.g. ElvUF_Player  (use /fstack)",
+    disabled = function() return g().dock ~= "custom" end,
+    get = function() return g().dockFrame end, set = function(v) g().dockFrame = v end })
+  L:Add("Dropdown", { label = "Point on that frame", options = ns.SIDES,
+    disabled = function() return not docked() end,
+    get = function() return g().dockSide end, set = function(v) g().dockSide = v end })
+  L:Add("Slider", { label = "X offset", min = -800, max = 800, step = 1, free = true,
+    get = function() return docked() and g().x or g().freeX end,
+    set = function(v) if docked() then g().x = v else g().freeX = v end end })
+  L:Add("Slider", { label = "Y offset", min = -800, max = 800, step = 1, free = true,
+    get = function() return docked() and g().y or g().freeY end,
+    set = function(v) if docked() then g().y = v else g().freeY = v end end }, 14)
+  local reset = W.Button(p, { label = "Reset group position", onClick = function()
+    local d = ns.DEFAULTS.group
+    for k, v in pairs(d) do g()[k] = v end
+    O:Changed()
+  end })
+  reset:SetPoint("TOPLEFT", p, "TOPLEFT", COL1_X, L.y)
+  reset:SetWidth(COL_W)
+  table.insert(p.widgets, reset)
+
+  local R = p:Column(COL2_X, COL_Y, COL_W)
+  R:Add("Header", { label = "Members" })
+  for _, key in ipairs(ns.BAR_ORDER) do
+    local info = ns.BAR_INFO[key]
+    R:Add("Toggle", {
+      label = (info.unit == "player" and "Player" or "Target") .. "  /  " .. info.name,
+      get = function() return SL.db.bars[key].dock == "group" end,
+      set = function(v) ns.Bars:Reanchor(ns.Bars.frames[key], v and "group" or "none") end,
+    }, 2)
+  end
+  R.y = R.y - 10
+  ButtonPair(p, R, COL2_X,
+    { label = "Add all", onClick = function()
+        for _, key in ipairs(ns.BAR_ORDER) do ns.Bars:Reanchor(ns.Bars.frames[key], "group") end
+        O:Changed()
+      end },
+    { label = "Remove all", onClick = function()
+        for _, key in ipairs(ns.BAR_ORDER) do
+          if SL.db.bars[key].dock == "group" then ns.Bars:Reanchor(ns.Bars.frames[key], "none") end
+        end
+        O:Changed()
+      end })
+  R:Add("Note", { height = 70, text =
+    "Bars stay where they are when you add or remove them; only their offsets change. " ..
+    "Unlock bars to drag the group by its tab, or Shift-drag any member bar. " ..
+    "A member's offsets (on its own page) are measured from the group." })
 end
 
 ---------------------------------------------------------------------------
@@ -686,6 +823,8 @@ local function NavButton(parent, id, label, colorFn)
       local r, g, bl, enabled = colorFn()
       self.dot:SetVertexColor(r, g, bl, enabled and 1 or 0.3)
       self.state:SetText(enabled and "" or "OFF")
+    elseif self.stateFn then
+      self.state:SetText(self.stateFn())
     end
   end
   b:SetScript("OnEnter", function(self) if not self.selected then self.bg:SetColorTexture(1, 1, 1, 0.03) end end)
@@ -744,6 +883,7 @@ function O:Build()
   local sub = Text(header, 11, C.muted)
   sub:SetPoint("LEFT", logo, "RIGHT", 12, -9)
   sub:SetText("Weapon swing timers")
+  self.headerSub = sub
 
   local close = CreateFrame("Button", nil, header)
   close:SetSize(30, 30)
@@ -792,8 +932,14 @@ function O:Build()
     b:SetPoint("TOPLEFT", 0, y); b:SetPoint("TOPRIGHT", -1, y)
     y = y - 30
     self.nav[#self.nav + 1] = b
+    return b
   end
   addNav("general", "General")
+  addNav("group", "Group").stateFn = function()
+    local n = ns.Bars:GroupMemberCount()
+    return n > 0 and (n .. " BARS") or ""
+  end
+  addNav("profiles", "Profiles")
   for _, group in ipairs({ { "player", "PLAYER" }, { "target", "TARGET" } }) do
     y = y - 12
     SectionLabel(side, group[2], y)
@@ -828,9 +974,11 @@ function O:Build()
   f:SetScript("OnShow", function()
     SL.optionsOpen = true
     O:Refresh()
+    ns.Bars:UpdateGroupHandle()
   end)
   f:SetScript("OnHide", function()
     SL.optionsOpen = false
+    ns.Bars:UpdateGroupHandle()
     if Menu then Menu:Hide() end
     if ColorPickerFrame and ColorPickerFrame:IsShown() then ColorPickerFrame:Hide() end
   end)
@@ -845,11 +993,15 @@ function O:Select(id)
   local p = self.pages[id]
   if not p then
     p = NewPage(self.content)
-    if id == "general" then self:BuildGeneral(p) else self:BuildBar(p, id) end
+    if id == "general" then self:BuildGeneral(p)
+    elseif id == "group" then self:BuildGroup(p)
+    elseif id == "profiles" then self:BuildProfiles(p)
+    else self:BuildBar(p, id) end
     self.pages[id] = p
   end
   p:Show()
   p:Refresh()
+  ns.Bars:UpdateGroupHandle()
 end
 
 function O:Refresh()
@@ -858,6 +1010,7 @@ function O:Refresh()
   if p then p:Refresh() end
   for _, b in ipairs(self.nav) do b:Update(b.id == self.selected) end
   self.lockBtn:Refresh()
+  self.headerSub:SetText("Profile: " .. (SL.profileName or "?"))
 end
 
 -- Called after any setting changes: re-apply bars, refresh visible widgets.

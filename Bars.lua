@@ -44,8 +44,18 @@ local STYLE = {
 ---------------------------------------------------------------------------
 -- Docking
 ---------------------------------------------------------------------------
+-- Anchors for the group itself
+ns.GROUP_DOCKS = {
+  { value = "none",   text = "Free (not docked)" },
+  { value = "player", text = "Player unit frame" },
+  { value = "target", text = "Target unit frame" },
+  { value = "custom", text = "Custom frame..." },
+}
+
+-- Anchors for a bar: everything above plus the group
 ns.DOCKS = {
   { value = "none",   text = "Free (not docked)" },
+  { value = "group",  text = "Swingline group" },
   { value = "player", text = "Player unit frame" },
   { value = "target", text = "Target unit frame" },
   { value = "custom", text = "Custom frame..." },
@@ -77,6 +87,9 @@ local DOCK_CANDIDATES = {
 local function isFrame(f) return type(f) == "table" and type(f.GetObjectType) == "function" end
 
 function Bars:ResolveDock(cfg)
+  if cfg.dock == "group" then
+    return cfg ~= SL.db.group and self.group or nil
+  end
   if cfg.dock == "custom" then
     local f = cfg.dockFrame ~= "" and _G[cfg.dockFrame]
     return isFrame(f) and f or nil
@@ -105,12 +118,23 @@ function Bars:Layout(f)
   local cfg = f.cfg
   f:ClearAllPoints()
   local dock = cfg.dock ~= "none" and self:ResolveDock(cfg)
-  if dock then
+  if dock and dock ~= f then
     local pts = SIDE_POINTS[cfg.dockSide] or SIDE_POINTS.BOTTOM
-    f:SetPoint(pts[1], dock, pts[2], cfg.x, cfg.y)
-  else
-    f:SetPoint("CENTER", UIParent, "CENTER", cfg.freeX, cfg.freeY)
+    -- pcall: a custom anchor could create a loop (e.g. the group docked to one of its members)
+    if pcall(f.SetPoint, f, pts[1], dock, pts[2], cfg.x, cfg.y) then return end
+    f:ClearAllPoints()
   end
+  f:SetPoint("CENTER", UIParent, "CENTER", cfg.freeX, cfg.freeY)
+end
+
+-- Change what a bar (or the group) is anchored to without moving it on screen:
+-- the offsets are recomputed from where it currently sits.
+function Bars:Reanchor(f, dock)
+  local cfg = f.cfg
+  cfg.dock = dock
+  local l = f:GetRect()
+  if l and ns.readable(l) then self:SavePosition(f) end
+  self:Layout(f)
 end
 
 -- After a drag, convert the new position back into offsets.
@@ -207,13 +231,24 @@ function Bars:Create(key)
 
   f:SetScript("OnDragStart", function(self)
     if SL.db.locked then return end
-    self:StartMoving()
+    if IsShiftKeyDown() and self.cfg.dock == "group" then
+      Bars.movingGroup = self       -- shift-drag a member: move the whole group
+      Bars.group:StartMoving()
+    else
+      self:StartMoving()
+    end
   end)
   f:SetScript("OnDragStop", function(self)
+    if Bars.movingGroup == self then
+      Bars.movingGroup = nil
+      Bars:FinishGroupMove()
+      return
+    end
     self:StopMovingOrSizing()
     self:SetUserPlaced(false)
     Bars:SavePosition(self)
     Bars:Layout(self)
+    Bars:UpdateGroupHandle()
     ns.Options:Refresh()
   end)
   f:SetScript("OnMouseUp", function(self, button)
@@ -225,6 +260,9 @@ function Bars:Create(key)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:AddLine((info.unit == "player" and "Player - " or "Target - ") .. SL:BarLabel(self.key), 1, 1, 1)
     GameTooltip:AddLine("Drag to move", 0.7, 0.75, 0.85)
+    if self.cfg.dock == "group" then
+      GameTooltip:AddLine("Shift-drag to move the whole group", 0.7, 0.75, 0.85)
+    end
     GameTooltip:AddLine("Right-click for settings", 0.7, 0.75, 0.85)
     GameTooltip:Show()
   end)
@@ -234,7 +272,123 @@ function Bars:Create(key)
   return f
 end
 
+---------------------------------------------------------------------------
+-- Group: a 1x1 anchor point that member bars are offset from, plus a
+-- drag handle (outline around the members) shown while unlocked.
+---------------------------------------------------------------------------
+local function groupDragStart()
+  if SL.db.locked then return end
+  Bars.group:StartMoving()
+end
+
+function Bars:FinishGroupMove()
+  local g = self.group
+  g:StopMovingOrSizing()
+  g:SetUserPlaced(false)
+  self:SavePosition(g)
+  self:Layout(g)
+  self:UpdateGroupHandle()
+  ns.Options:Refresh()
+end
+
+function Bars:CreateGroup()
+  local g = CreateFrame("Frame", "Swingline_Group", UIParent)
+  g:SetSize(1, 1)
+  g:SetMovable(true)
+  self.group = g
+
+  local h = CreateFrame("Frame", "Swingline_GroupHandle", UIParent)
+  h:SetFrameStrata("LOW")   -- below the bars, so members can still be dragged individually
+  h:EnableMouse(true)
+  h:RegisterForDrag("LeftButton")
+  h:Hide()
+  h.tint = h:CreateTexture(nil, "BACKGROUND")
+  h.tint:SetAllPoints()
+  h.tint:SetColorTexture(0.38, 0.56, 1, 0.07)
+  h.edges = edgeSet(h, "BORDER", 0)
+  h.edges:SetColor(0.38, 0.56, 1, 0.75)
+
+  local tab = CreateFrame("Frame", nil, h)
+  tab:SetPoint("BOTTOMLEFT", h, "TOPLEFT", -1, 0)
+  tab:SetHeight(16)
+  tab:EnableMouse(true)
+  tab:RegisterForDrag("LeftButton")
+  tab.bg = tab:CreateTexture(nil, "BACKGROUND")
+  tab.bg:SetAllPoints()
+  tab.bg:SetColorTexture(0.38, 0.56, 1, 0.95)
+  tab.text = tab:CreateFontString(nil, "OVERLAY")
+  tab.text:SetFont(FONT, 10, "")
+  tab.text:SetPoint("LEFT", 6, 0)
+  tab.text:SetText("SWINGLINE GROUP")
+  tab:SetWidth(tab.text:GetStringWidth() + 12)
+  h.tab = tab
+
+  for _, w in ipairs({ h, tab }) do
+    w:SetScript("OnDragStart", groupDragStart)
+    w:SetScript("OnDragStop", function() Bars:FinishGroupMove() end)
+    w:SetScript("OnMouseUp", function(_, button)
+      if button == "RightButton" then ns.Options:Open("group") end
+    end)
+    w:SetScript("OnEnter", function()
+      GameTooltip:SetOwner(tab, "ANCHOR_TOP")
+      GameTooltip:AddLine("Swingline group", 1, 1, 1)
+      if SL.db.locked then
+        GameTooltip:AddLine("Unlock bars to drag the group", 0.7, 0.75, 0.85)
+      else
+        GameTooltip:AddLine("Drag to move every bar in the group", 0.7, 0.75, 0.85)
+      end
+      GameTooltip:AddLine("Right-click for group settings", 0.7, 0.75, 0.85)
+      GameTooltip:Show()
+    end)
+    w:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  end
+  self.groupHandle = h
+end
+
+function Bars:GroupMemberCount()
+  local n = 0
+  for _, cfg in pairs(SL.db.bars) do
+    if cfg.dock == "group" then n = n + 1 end
+  end
+  return n
+end
+
+-- Fit the handle around all enabled member bars.
+function Bars:UpdateGroupHandle()
+  local h, g = self.groupHandle, self.group
+  if not h or not SL.db then return end
+  local show = not SL.db.locked or (SL.optionsOpen and ns.Options.selected == "group")
+  local gx, gy = pointXY(g, "CENTER")
+  if not show or not gx then h:Hide(); return end
+
+  local l, b, r, t
+  for _, f in pairs(self.frames) do
+    local cfg = f.cfg
+    if cfg and cfg.enabled and cfg.dock == "group" then
+      local fl, fb, fw, fh = f:GetRect()
+      if fl and ns.readable(fl) then
+        local s = f:GetEffectiveScale()
+        local x1, y1, x2, y2 = fl * s, fb * s, (fl + fw) * s, (fb + fh) * s
+        l = l and min(l, x1) or x1;  b = b and min(b, y1) or y1
+        r = r and max(r, x2) or x2;  t = t and max(t, y2) or y2
+      end
+    end
+  end
+
+  local hs, pad = h:GetEffectiveScale(), 5
+  h:ClearAllPoints()
+  if l then
+    h:SetPoint("BOTTOMLEFT", g, "CENTER", (l - gx) / hs - pad, (b - gy) / hs - pad)
+    h:SetSize((r - l) / hs + pad * 2, (t - b) / hs + pad * 2)
+  else
+    h:SetPoint("CENTER", g, "CENTER")   -- empty group: just show where it is
+    h:SetSize(120, 20)
+  end
+  h:Show()
+end
+
 function Bars:CreateAll()
+  if not self.group then self:CreateGroup() end
   for _, key in ipairs(ns.BAR_ORDER) do
     if not self.frames[key] then self:Create(key) end
   end
@@ -337,7 +491,12 @@ end
 
 function Bars:ApplyAll()
   if not SL.db then return end
+  if self.group then
+    self.group.cfg = SL.db.group
+    self:Layout(self.group)   -- group first: members anchor to it
+  end
   for _, f in pairs(self.frames) do self:Apply(f) end
+  self:UpdateGroupHandle()
 end
 
 ---------------------------------------------------------------------------

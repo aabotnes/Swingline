@@ -10,7 +10,8 @@ Modern, fully customizable weapon swing timers for **WoW Forever**. Each bar has
 
 ## Use
 - `/swl` opens the settings window. It also opens from the AddOns compartment button by the minimap, or Options > AddOns > Swingline.
-- `/swl unlock` and `/swl lock` turn dragging on and off. `/swl test` shows every bar. `/swl reset` restores the defaults.
+- `/swl unlock` and `/swl lock` turn dragging on and off. `/swl test` shows every bar.
+- `/swl profile <name>` switches profile. `/swl reset` resets the active profile.
 - While the bars are unlocked, drag one to move it, or right-click it to open its settings.
 
 ## Bars
@@ -29,6 +30,26 @@ Settings for each bar:
 Settings for each bar's position:
 - **Anchor to**: free, Player unit frame, Target unit frame, or a custom frame name. Unit frames are detected in this order: ElvUI, Shadowed Unit Frames, PitBull4, oUF, then Blizzard's own frames.
 - **Placement**: which side of the frame the bar attaches to, plus X/Y offsets. Dragging a docked bar updates its offsets from the frame it's docked to.
+
+## Group
+Set a bar's **Anchor to** to *Swingline group* to make it a member of the group. Member bars keep their own offsets from the group, and the group has its own anchor and X/Y offset. Moving the group moves every member with it.
+- **Group settings page**: choose the group's anchor and offset, and which bars are members.
+- **Adding or removing a bar**: the bar stays where it is on screen; only its offsets change.
+- **Moving the group**: unlock bars, then drag the group by its tab, or Shift-drag any member bar.
+
+## Profiles
+Profiles are shared by all your characters, and each character remembers which one it uses. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.
+
+Built-in profiles:
+| Profile | Look |
+|---|---|
+| Default | Labelled bars below your player and target frames |
+| Frame Lines | Hair-thin 2px lines across the top of your unit frames |
+| Center Stack | One group under your character, with target bars above yours |
+| Neon | Glowing slim bars below your unit frames |
+| Classic | Blizzard-style bars with borders, labels and timers |
+
+Built-in profiles can be edited freely. **Reset** brings back the original look, and **Restore built-in profiles** re-adds any you deleted.
 
 ## How timing works
 - **Your swings** come from Forever's native `PLAYER_SWING` event. Haste changes during a swing rescale the time left. Bars dim when your target is out of range, using `C_SwingTimer` range checks.
