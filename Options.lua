@@ -573,6 +573,99 @@ function O:BuildGeneral(p)
     get = function() return SL.profileName end, set = function(v) SL:SetProfile(v) end })
 end
 
+local PLATE_LINE_LABEL = {
+  playerMain = "Your main hand",   playerOff = "Your off hand",   playerRanged = "Your ranged",
+  targetMain = "Target main hand", targetOff = "Target off hand", targetRanged = "Target ranged",
+}
+
+function O:BuildPlates(p)
+  local function cfg() return SL.db.plates end
+  local off = function() return not cfg().enabled end
+  p:Title("Nameplate  /  Lines & look", "Thin swing lines on your current target's nameplate, " ..
+    "right where you're looking. Target something while this window is open to see a preview.")
+
+  local L = p:Column(COL1_X, COL_Y, COL_W)
+  L:Add("Header", { label = "Lines" })
+  L:Add("Toggle", { label = "Show on target's nameplate",
+    get = function() return cfg().enabled end, set = function(v) cfg().enabled = v end }, 8)
+  for _, key in ipairs(ns.PLATE_LINES) do
+    L:Add("Toggle", { label = PLATE_LINE_LABEL[key], disabled = off,
+      get = function() return cfg().lines[key] end, set = function(v) cfg().lines[key] = v end }, 0)
+  end
+  L.y = L.y - 12
+  L:Add("Header", { label = "Look" })
+  L:Add("Dropdown", { label = "Style", options = ns.PLATE_STYLES, disabled = off,
+    get = function() return cfg().style end, set = function(v) cfg().style = v end })
+  L:Add("Toggle", { label = "Border", disabled = off,
+    get = function() return cfg().border end, set = function(v) cfg().border = v end }, 2)
+  L:Add("Toggle", { label = "Spark", disabled = off,
+    get = function() return cfg().showSpark end, set = function(v) cfg().showSpark = v end }, 2)
+
+  local R = p:Column(COL2_X, COL_Y, COL_W)
+  R:Add("Header", { label = "Colours" })
+  R:Add("Toggle", { label = "Use the bars' colours", disabled = off,
+    tooltip = "Each line takes the colour of the matching bar.",
+    get = function() return cfg().useBarColors end, set = function(v) cfg().useBarColors = v end }, 4)
+  local custom = function() return off() or cfg().useBarColors or cfg().style == "forever" end
+  R:Add("Color", { label = "Your lines", disabled = custom,
+    get = function() local c = cfg().playerColor; return c.r, c.g, c.b end,
+    set = function(r, g, b) local c = cfg().playerColor; c.r, c.g, c.b = r, g, b end }, 4)
+  R:Add("Color", { label = "Target's lines", disabled = custom,
+    get = function() local c = cfg().targetColor; return c.r, c.g, c.b end,
+    set = function(r, g, b) local c = cfg().targetColor; c.r, c.g, c.b = r, g, b end }, 14)
+  R:Add("Header", { label = "Text and fill" })
+  R:Add("Toggle", { label = "Show time remaining", disabled = off,
+    get = function() return cfg().showText end, set = function(v) cfg().showText = v end }, 4)
+  R:Add("Slider", { label = "Font size", min = 6, max = 16, step = 1,
+    disabled = function() return off() or not cfg().showText end,
+    get = function() return cfg().fontSize end, set = function(v) cfg().fontSize = v end })
+  R:Add("Dropdown", { label = "Fill direction", disabled = off,
+    options = { { value = "fill", text = "Fill up (empty to full)" }, { value = "drain", text = "Drain (full to empty)" } },
+    get = function() return cfg().fill end, set = function(v) cfg().fill = v end })
+  R:Add("Slider", { label = "Background opacity", min = 0, max = 1, step = 0.05, fmt = pct, parse = fromPct,
+    disabled = off,
+    get = function() return cfg().bgAlpha end, set = function(v) cfg().bgAlpha = v end })
+end
+
+function O:BuildPlatesPos(p)
+  local function cfg() return SL.db.plates end
+  local off = function() return not cfg().enabled end
+  p:Title("Nameplate  /  Position & visibility", "Where the lines sit on the nameplate, how big they are, " ..
+    "and when they show. Offsets are measured from the plate's health bar.")
+
+  local L = p:Column(COL1_X, COL_Y, COL_W)
+  L:Add("Header", { label = "Size" })
+  L:Add("Slider", { label = "Width (0 = plate width)", min = 0, max = 300, step = 1, disabled = off,
+    fmt = function(v) return v <= 0 and "Plate" or tostring(math.floor(v + 0.5)) end,
+    get = function() return cfg().width end, set = function(v) cfg().width = v end })
+  L:Add("Slider", { label = "Line height", min = 1, max = 16, step = 1, disabled = off,
+    get = function() return cfg().height end, set = function(v) cfg().height = v end })
+  L:Add("Slider", { label = "Gap between lines", min = 0, max = 10, step = 1, disabled = off,
+    get = function() return cfg().gap end, set = function(v) cfg().gap = v end }, 22)
+  L:Add("Header", { label = "Show while" })
+  L:Add("Toggle", { label = "Solo", disabled = off,
+    get = function() return cfg().showSolo end, set = function(v) cfg().showSolo = v end }, 2)
+  L:Add("Toggle", { label = "In a party", disabled = off,
+    get = function() return cfg().showParty end, set = function(v) cfg().showParty = v end }, 2)
+  L:Add("Toggle", { label = "In a raid", disabled = off,
+    get = function() return cfg().showRaid end, set = function(v) cfg().showRaid = v end }, 2)
+
+  local R = p:Column(COL2_X, COL_Y, COL_W)
+  R:Add("Header", { label = "Position" })
+  R:Add("Dropdown", { label = "Side", disabled = off,
+    options = { { value = "BOTTOM", text = "Below the health bar" }, { value = "TOP", text = "Above the health bar" } },
+    get = function() return cfg().side end, set = function(v) cfg().side = v end })
+  R:Add("Slider", { label = "X offset", min = -100, max = 100, step = 1, free = true, disabled = off,
+    get = function() return cfg().x end, set = function(v) cfg().x = v end })
+  R:Add("Slider", { label = "Y offset", min = -60, max = 60, step = 1, free = true, disabled = off,
+    get = function() return cfg().y end, set = function(v) cfg().y = v end }, 14)
+  R:Add("Button", { label = "Reset size and position", disabled = off, onClick = function()
+    local d = ns.DEFAULTS.plates
+    for _, k in ipairs({ "side", "width", "height", "gap", "x", "y" }) do cfg()[k] = d[k] end
+    O:Changed()
+  end })
+end
+
 function O.ProfileOptions()
   local list = {}
   for _, name in ipairs(SL:ProfileNames()) do list[#list + 1] = { value = name, text = name } end
@@ -864,7 +957,7 @@ function O:Build()
   if self.frame then return end
 
   local f = Panel(UIParent, C.bg, { 0, 0, 0, 1 }, "Frame", "SwinglineOptionsFrame")
-  f:SetSize(800, 580)
+  f:SetSize(800, 640)
   f:SetPoint("CENTER")
   f:SetFrameStrata("DIALOG")
   f:SetToplevel(true)
@@ -956,6 +1049,11 @@ function O:Build()
   end
   addNav("general", "General")
   addNav("profiles", "Profiles")
+  y = y - 12
+  SectionLabel(side, "NAMEPLATE", y)
+  y = y - 20
+  addNav("plates", "Lines & look").stateFn = function() return SL.db.plates.enabled and "ON" or "" end
+  addNav("platesPos", "Position & visibility")
   for _, group in ipairs({ { "player", "PLAYER" }, { "target", "TARGET" } }) do
     y = y - 12
     SectionLabel(side, group[2], y)
@@ -1017,6 +1115,8 @@ function O:Select(id)
     if id == "general" then self:BuildGeneral(p)
     elseif id:find("^group:") then self:BuildGroup(p, id:sub(7))
     elseif id == "profiles" then self:BuildProfiles(p)
+    elseif id == "plates" then self:BuildPlates(p)
+    elseif id == "platesPos" then self:BuildPlatesPos(p)
     else self:BuildBar(p, id) end
     self.pages[id] = p
   end

@@ -12,4 +12,5 @@
 
 Core.lua
 Bars.lua
+Plates.lua
 Options.lua

@@ -94,6 +94,19 @@ ns.DEFAULTS = {
   rangeDim   = true,
   scale      = 1,
   fontSize   = 11,
+  -- Minimal swing lines on the current target's nameplate
+  plates = {
+    enabled = false,
+    lines = { playerMain = true, playerOff = false, playerRanged = false,
+              targetMain = true, targetOff = false, targetRanged = false },
+    style = "flat", border = true, showSpark = true, fill = "fill",
+    useBarColors = true,
+    playerColor = { r = 0.30, g = 0.62, b = 1.00 },
+    targetColor = { r = 1.00, g = 0.36, b = 0.34 },
+    showText = false, fontSize = 9,
+    showSolo = true, showParty = true, showRaid = true,
+    side = "BOTTOM", width = 0, height = 3, gap = 1, x = 0, y = -2, bgAlpha = 0.6,
+  },
   -- Anchor points for the player's and the target's bars
   groups = {
     player = groupDefaults("player"),
@@ -589,7 +602,13 @@ function SL:PLAYER_TARGET_CHANGED()
   resetTimer("targetMain"); resetTimer("targetOff"); resetTimer("targetRanged")
   self.targetMeasured, self.targetRangedMeasured = nil, nil
   wipe(self.outOfRange)
+  ns.Plates:Attach()
 end
+
+-- Nameplates come and go (and get recycled): re-find the target's plate.
+function SL:NAME_PLATE_UNIT_ADDED()   ns.Plates:Attach() end
+function SL:NAME_PLATE_UNIT_REMOVED() ns.Plates:Attach() end
+function SL:GROUP_ROSTER_UPDATE()     ns.Plates:Attach() end -- solo / party / raid changed
 
 ---------------------------------------------------------------------------
 -- Combat state
@@ -674,6 +693,7 @@ function SL:PLAYER_LOGIN()
   if SwinglineDB.hideBlizzard then self:SetHideBlizzard(true) end
 
   self:UpdateEquipment()
+  ns.Plates:Init()
   ns.Bars:CreateAll()
   ns.Options:RegisterBlizzardPanel()
   self:ApplyRangeCheck()
@@ -691,6 +711,9 @@ function SL:PLAYER_LOGIN()
   reg("PLAYER_EQUIPMENT_CHANGED")
   reg("PLAYER_DEAD")
   reg("PLAYER_ENTERING_WORLD")
+  reg("NAME_PLATE_UNIT_ADDED")
+  reg("NAME_PLATE_UNIT_REMOVED")
+  reg("GROUP_ROSTER_UPDATE")
 
   self:SetScript("OnUpdate", function() ns.Bars:UpdateAll() end)
 end

@@ -38,6 +38,19 @@ There are two groups: one for your bars and one for your target's. Out of the bo
 - **Adding or removing a bar**: the bar stays where it is on screen; only its offsets change.
 - **Moving a group**: unlock bars, then drag the group by its tab, or Shift-drag any member bar.
 
+## Nameplate swing lines
+Optional thin swing timers on your current target's nameplate. Turn them on under **Nameplate** in the sidebar.
+- **Lines & look:**
+  - which of the six timers to show
+  - style: Flat, Gradient, Classic, Neon Glow or WoW Forever art
+  - border, spark and fill direction
+  - colours: the bars' own, or one colour for your lines and one for your target's
+  - optional time text and background opacity
+- **Position & visibility:**
+  - width (0 = match the plate), line height and gap
+  - above or below the health bar, with X/Y offsets
+  - separate on/off settings for **solo**, **in a party** and **in a raid**
+
 ## Profiles
 Profiles are shared by all your characters, and each character remembers which one it uses. New characters start on **WoW Forever**. On the **Profiles** page you can create, duplicate, rename, copy from, reset or delete profiles. You can also switch with `/swl profile <name>`.
 

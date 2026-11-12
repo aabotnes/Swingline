@@ -1,5 +1,16 @@
 # Swingline
 
+## v1.4.0
+
+- **New: nameplate swing lines.** Thin swing timers on your current target's nameplate. It's off by default; turn it on under *Nameplate* in the sidebar.
+  - **Lines:** any of the six timers (yours and your target's), each on or off.
+  - **Look:** Flat, Gradient, Classic, Neon Glow or WoW Forever art, with an optional border and spark, filling up or draining.
+  - **Colours:** the bars' colours, or your own colour for your lines and one for your target's.
+  - **Text:** optional time remaining, with its own font size, plus background opacity.
+  - **Size and position:** width (or match the plate), line height, gap, above or below the health bar, and X/Y offsets.
+  - **Visibility:** separate on/off settings for solo, in a party and in a raid.
+- The settings window is a little taller to fit the new pages.
+
 ## v1.3.2
 
 - **New addon icon** in the style of WoW Forever's own swing timer: three beveled bars with stone-bronze fills and bright pips, on a starry night sky with constellations, a blue nebula and a gold rim.

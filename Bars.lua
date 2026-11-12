@@ -603,6 +603,7 @@ function Bars:ApplyAll()
   end
   for _, f in pairs(self.frames) do self:Apply(f) end
   self:UpdateGroupHandles()
+  if ns.Plates then ns.Plates:Apply() end
 end
 
 ---------------------------------------------------------------------------
@@ -698,4 +699,6 @@ function Bars:UpdateAll()
       end
     end
   end
+
+  if ns.Plates then ns.Plates:Update(now, preview) end
 end
