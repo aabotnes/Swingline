@@ -553,11 +553,15 @@ function O:BuildGeneral(p)
     tooltip = "Turns off WoW Forever's built-in swing timer (all characters).",
     disabled = function() return not SL:BlizzardBarsAvailable() end,
     get = function() return SwinglineDB.hideBlizzard end,
-    set = function(v) SL:SetHideBlizzard(v) end }, 14)
+    set = function(v) SL:SetHideBlizzard(v) end }, 4)
+  L:Add("Toggle", { label = "Show minimap button",
+    tooltip = "Left-click opens these settings, right-click locks or unlocks the bars. Drag it around the minimap (all characters).",
+    get = function() return ns.Minimap:IsShown() end,
+    set = function(v) ns.Minimap:SetShown(v) end }, 14)
   L:Add("Note", { height = 90, text =
     "Your swings use WoW Forever's native swing event. Target timers are estimated from the hits your " ..
     "target lands on you (addons can't read the combat log on Forever), so treat them as a guide.\n\n" ..
-    "Slash command: /swl  (lock, unlock, test, reset)" })
+    "Slash command: /swl  (lock, unlock, test, minimap, reset)" })
 
   local R = p:Column(COL2_X, COL_Y, COL_W)
   R:Add("Header", { label = "Global appearance" })
@@ -992,7 +996,7 @@ function O:Build()
 
   local title = Text(header, 15)
   title:SetPoint("LEFT", logo, "RIGHT", 12, 7)
-  title:SetText("Swingline")
+  title:SetText(ns.TITLE)
   local sub = Text(header, 11, C.muted)
   sub:SetPoint("LEFT", logo, "RIGHT", 12, -9)
   sub:SetText("Weapon swing timers")
@@ -1157,7 +1161,7 @@ function O:RegisterBlizzardPanel()
   local p = CreateFrame("Frame")
   local t = p:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   t:SetPoint("TOPLEFT", 16, -16)
-  t:SetText("Swingline")
+  t:SetText(ns.TITLE)
   local d = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   d:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -8)
   d:SetText("Swing timers are configured in their own window.")

@@ -2,6 +2,8 @@
 
 # Swingline
 
+*by Soeta*
+
 Modern, fully customizable weapon swing timers for **WoW Forever**. Each bar has its own settings. Bars can float anywhere on screen, or dock to your unit frames either on their own or in groups.
 
 ## Install
@@ -9,7 +11,8 @@ Modern, fully customizable weapon swing timers for **WoW Forever**. Each bar has
 - **Manual**: download the zip from [Releases](https://github.com/aabotnes/Swingline/releases). Extract it into the Forever client's `Interface\AddOns` folder, so you end up with `AddOns\Swingline\Swingline.toc`.
 
 ## Use
-- `/swl` opens the settings window. It also opens from the AddOns compartment button by the minimap, or Options > AddOns > Swingline.
+- `/swl` opens the settings window. It also opens from Swingline's minimap button, the AddOns compartment, or Options > AddOns > Swingline.
+- Minimap button: left-click opens the settings, right-click locks or unlocks the bars, and you can drag it around the minimap. Hide it on the General page or with `/swl minimap`.
 - `/swl unlock` and `/swl lock` turn dragging on and off. `/swl test` shows every bar.
 - `/swl profile <name>` switches profile. `/swl reset` resets the active profile.
 - While the bars are unlocked, drag one to move it, or right-click it to open its settings.

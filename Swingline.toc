@@ -1,8 +1,7 @@
 ## Interface: 16001
 ## Title: Swingline
-## Notes: Modern, customizable weapon swing timers (main hand, off hand, ranged) for you and your target.
+## Notes: |cffc27dff[Soeta's]|r Customizable weapon swing timers for you and your target, as bars or right on the nameplate. /swl
 ## Version: @project-version@
-## Author: aabotnes
 ## Category: Combat
 ## SavedVariables: SwinglineDB
 ## IconTexture: Interface\AddOns\Swingline\Media\Icon
@@ -13,4 +12,5 @@
 Core.lua
 Bars.lua
 Plates.lua
+Minimap.lua
 Options.lua

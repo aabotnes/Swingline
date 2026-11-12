@@ -9,6 +9,8 @@
   - **Text:** optional time remaining, with its own font size, plus background opacity.
   - **Size and position:** width (or match the plate), line height, gap, above or below the health bar, and X/Y offsets.
   - **Visibility:** separate on/off settings for solo, in a party and in a raid.
+- **New: minimap button.** Left-click opens the settings, right-click locks or unlocks the bars, and you can drag it around the minimap. Show or hide it on the General page or with `/swl minimap`.
+- Swingline now carries the **[Soeta's]** tag in the AddOns list, the settings window and chat, like the other Soeta addons.
 - The settings window is a little taller to fit the new pages.
 
 ## v1.3.2

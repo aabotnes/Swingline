@@ -8,6 +8,10 @@ local SL = CreateFrame("Frame", "SwinglineCore")
 ns.SL = SL
 _G.Swingline = SL
 
+-- Shown in the settings window, chat and the Blizzard options panel, like the
+-- other [Soeta's] addons (the AddOns list keeps the plain name "Swingline").
+ns.TITLE = "|cffc27dff[Soeta's]|r |cff33ff99Swingline|r"
+
 local GetTime, pcall, type, ipairs, pairs = GetTime, pcall, type, ipairs, pairs
 
 ---------------------------------------------------------------------------
@@ -97,8 +101,9 @@ ns.DEFAULTS = {
   -- Minimal swing lines on the current target's nameplate
   plates = {
     enabled = false,
-    lines = { playerMain = true, playerOff = false, playerRanged = false,
-              targetMain = true, targetOff = false, targetRanged = false },
+    -- the target's timers by default: that's what you watch on its nameplate
+    lines = { playerMain = false, playerOff = false, playerRanged = false,
+              targetMain = true, targetOff = true, targetRanged = true },
     style = "flat", border = true, showSpark = true, fill = "fill",
     useBarColors = true,
     playerColor = { r = 0.30, g = 0.62, b = 1.00 },
@@ -219,7 +224,10 @@ end
 -- Profiles: SwinglineDB.profiles[name] holds settings (account-wide);
 -- SwinglineDB.profileKeys["Name - Realm"] remembers each character's pick.
 ---------------------------------------------------------------------------
-local function say(msg) print("|cff6190ffSwingline|r: " .. msg) end
+local function say(msg)
+  local out = DEFAULT_CHAT_FRAME
+  if out then out:AddMessage(ns.TITLE .. ": " .. msg) else print(ns.TITLE .. ": " .. msg) end
+end
 ns.say = say
 
 local SCHEMA = 3
@@ -694,6 +702,7 @@ function SL:PLAYER_LOGIN()
 
   self:UpdateEquipment()
   ns.Plates:Init()
+  ns.Minimap:Init()
   ns.Bars:CreateAll()
   ns.Options:RegisterBlizzardPanel()
   self:ApplyRangeCheck()
@@ -736,22 +745,24 @@ SlashCmdList.SWINGLINE = function(raw)
   if profileArg then
     if SwinglineDB.profiles[profileArg] then
       SL:SetProfile(profileArg); ns.Options:Refresh()
-      print("|cff6190ffSwingline|r: profile \"" .. profileArg .. "\" loaded")
+      say("profile \"" .. profileArg .. "\" loaded")
     else
-      print("|cff6190ffSwingline|r: no profile named \"" .. profileArg .. "\". Profiles: " ..
+      say("no profile named \"" .. profileArg .. "\". Profiles: " ..
         table.concat(SL:ProfileNames(), ", "))
     end
   elseif msg == "lock" or msg == "unlock" then
     SL.db.locked = (msg == "lock")
     SL:ApplyAll(); ns.Options:Refresh()
-    print("|cff6190ffSwingline|r: bars " .. (SL.db.locked and "locked" or "unlocked - drag to move"))
+    say("bars " .. (SL.db.locked and "locked" or "unlocked - drag to move"))
+  elseif msg == "minimap" then
+    ns.Minimap:Toggle(); ns.Options:Refresh()
   elseif msg == "test" then
     SL.db.testMode = not SL.db.testMode
     SL:ApplyAll(); ns.Options:Refresh()
-    print("|cff6190ffSwingline|r: test mode " .. (SL.db.testMode and "on" or "off"))
+    say("test mode " .. (SL.db.testMode and "on" or "off"))
   elseif msg == "reset" then
     SL:ResetProfile(); ns.Options:Refresh()
-    print("|cff6190ffSwingline|r: profile \"" .. SL.profileName .. "\" reset")
+    say("profile \"" .. SL.profileName .. "\" reset")
   else
     ns.Options:Toggle()
   end
